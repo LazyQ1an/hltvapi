@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════════════════════════════
+# HLTV Scraper Configuration
+# ═══════════════════════════════════════════════════════════════════
+# Copy this file to config.yaml and modify as needed.
+# All values have sensible defaults — this file is optional.
+# ═══════════════════════════════════════════════════════════════════
+
+# ── Base ────────────────────────────────────────────────────────────
+base_url: "https://www.hltv.org"
+# user_agent: "Mozilla/5.0 (...) Chrome/124.0.0.0 Safari/537.36"
+
+# ── Client Mode ─────────────────────────────────────────────────────
+# "light"   = httpx/curl_cffi only — fastest, no browser overhead
+# "stealth" = auto-escalate to Playwright when Cloudflare detected
+client:
+  mode: "light"               # light | stealth
+  timeout: 30                 # Request timeout in seconds
+  max_retries: 3              # Max retry attempts
+  retry_delay: 1.0            # Base retry delay (seconds)
+  retry_backoff: 2.0          # Exponential backoff multiplier
+  user_agent_rotation: true   # Rotate User-Agent headers
+  referer_rotation: true      # Set realistic Referer headers
+  curl_impersonate: true      # Use curl_cffi for TLS fingerprinting
+  curl_impersonate_version: "chrome124"  # Browser to impersonate
+  max_concurrency: 5           # Max concurrent requests (set 2 for low-resource)
+  # proxy: "http://user:pass@host:port"  # Optional proxy (also reads HTTPS_PROXY env)
+
+# ── Rate Limiting ───────────────────────────────────────────────────
+rate_limit:
+  enabled: true
+  min_delay: 1.5              # Minimum delay between requests (seconds, gaussian center)
+  max_delay: 3.0              # Maximum delay between requests (seconds)
+  jitter: true                # Add gaussian randomness to delays
+  requests_per_hour: 1000     # Hard cap: max requests per hour
+  requests_per_day: 5000      # Hard cap: max requests per day
+
+# ── Cache ───────────────────────────────────────────────────────────
+cache:
+  backend: "diskcache"        # diskcache | redis | none
+  ttl: 300                    # Default TTL in seconds (5 min)
+  diskcache_dir: ".cache/hltv"
+  # redis_url: "redis://localhost:6379/0"
+
+# ── Logging ─────────────────────────────────────────────────────────
+logging:
+  level: "INFO"               # DEBUG | INFO | WARNING | ERROR
+  format: "plain"             # plain | json
+  # file: "hltv-scraper.log"  # Optional log file path

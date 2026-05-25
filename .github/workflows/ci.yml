@@ -1,0 +1,80 @@
+// ── v4.1: Enhanced CI — lint, typecheck, test, coverage, security
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - run: pip install ruff mypy
+      - name: Ruff lint
+        run: ruff check src/ --ignore=E501
+      - name: Mypy type check
+        run: mypy src/ --ignore-missing-imports --check-untyped-defs
+
+  python-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python-version }}", cache: "pip" }
+      - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
+      - run: pip install -r requirements.txt
+      - name: Import check
+        run: python -c "import sys; sys.path.insert(0,'.'); from src.config import HLTVConfig; from src.client import HLTVClient; from src.warehouse import Warehouse; from src.security import SecurityHeadersMiddleware; print('OK')"
+      - name: Run tests with coverage
+        run: |
+          pip install pytest pytest-cov
+          python -m pytest tests/ -v --ignore=tests/capture_fixtures.py --cov=src --cov-report=term-missing --cov-report=xml
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: coverage.xml
+          retention-days: 7
+
+  python-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - run: pip install bandit safety
+      - name: Bandit SAST
+        run: bandit -r src/ -x tests -ll
+      - name: Safety dependency check
+        run: safety check -r requirements.txt
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: ./frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: "npm", cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci || npm install
+      - name: Lint (strict)
+        run: npm run lint -- --max-warnings 10
+      - name: Type check (strict)
+        run: npm run typecheck
+      - name: Build
+        run: npm run build

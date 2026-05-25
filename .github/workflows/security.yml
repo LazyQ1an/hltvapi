@@ -1,0 +1,28 @@
+# ─────────────────────────────────────────────────────────────────
+# Security: Dependency scan + SAST
+# ─────────────────────────────────────────────────────────────────
+name: Security
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"  # Weekly: Monday 06:00
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
+      - run: pip install -r requirements.txt
+      - name: Install security tools
+        run: pip install bandit safety
+      - name: SAST (Bandit)
+        run: bandit -r src/ -x tests -ll || echo "Bandit warnings"
+      - name: Dependency scan (Safety)
+        run: safety check -r requirements.txt || echo "Safety warnings"

@@ -1,0 +1,87 @@
+# ═══════════════════════════════════════════════════════════════════
+# HLTV API v3.0 — Low-Resource Profile
+# ═══════════════════════════════════════════════════════════════════
+# Target: 30-60 RMB/month servers (1.5-2 cores, ≤1.5GB RAM)
+# Copy to config.yaml to activate: cp config/low-resource.yaml config.yaml
+# ═══════════════════════════════════════════════════════════════════
+
+# ── Client ─────────────────────────────────────────────────────────
+client:
+  mode: "light"                         # Force light mode (no Playwright)
+  timeout: 60                           # Longer timeout for slow servers
+  max_retries: 2                        # Fewer retries to reduce load
+  retry_delay: 2.0
+  retry_backoff: 3.0
+  curl_impersonate: true
+  curl_impersonate_version: "chrome124"
+  user_agent_rotation: true
+  referer_rotation: true
+  max_concurrency: 2                    # Strict low concurrency
+  proxy: ~
+
+# ── Rate Limiting ──────────────────────────────────────────────────
+rate_limit:
+  enabled: true
+  min_delay: 2.0                        # Longer delays for low resource
+  max_delay: 4.0
+  jitter: true
+  requests_per_hour: 300                # Conservative hourly cap
+  requests_per_day: 2000                # Conservative daily cap
+
+# ── Cache (endpoint-level TTL) ─────────────────────────────────────
+cache:
+  backend: "diskcache"                  # No Redis
+  dir: ".cache/hltv"
+  ttl:
+    upcoming: 600                       # 10 min
+    results: 900                        # 15 min
+    ranking: 1800                       # 30 min
+    match_detail: 3600                  # 1 hour
+    team_detail: 3600                   # 1 hour
+    news: 600                           # 10 min
+    player: 3600                        # 1 hour
+    event: 3600                         # 1 hour
+
+  # Auto-cleanup: delete cache entries older than N days
+  auto_cleanup_days: 7
+  auto_cleanup_interval: 3600           # Check every hour
+
+# ── Scheduler ──────────────────────────────────────────────────────
+scheduler:
+  enabled: true
+  ranking_snapshot: "0 6 * * *"         # Daily at 06:00
+  results_archive: "0 7 * * *"          # Daily at 07:00
+  adaptive: true                        # Slow down when CPU > 70%
+  cpu_threshold: 70                     # Back off when CPU above this %
+
+# ── Monitoring ─────────────────────────────────────────────────────
+monitoring:
+  enabled: true
+  check_interval: 300                   # Health check every 5 min
+  parse_ratio_threshold: 0.75           # Alert if parse rate below 75%
+
+  # Webhook alerting (Discord, Slack, or any custom endpoint)
+  webhook:
+    enabled: false
+    url: ""                     # e.g. "https://discord.com/api/webhooks/..."
+    # Supported: Discord, Slack, or any POST endpoint
+    # Sends: {"text": "...", "alerts": [...], "source": "hltv-api"}
+
+  # WebSocket (built-in, no config needed)
+  # Connect: ws://localhost:8000/ws
+  # Alerts are broadcast to all connected WebSocket clients automatically
+
+# ── Data Retention ─────────────────────────────────────────────────
+data_retention:
+  warehouse_keep_days: 90               # Keep 90 days of data
+  log_keep_days: 30                     # Keep 30 days of logs
+  backup_enabled: true
+  backup_dir: "./backups"
+
+# ── Logging ────────────────────────────────────────────────────────
+logging:
+  level: "INFO"
+  format: "plain"
+  file: "logs/hltv.log"
+  max_size_mb: 50                       # Rotate at 50MB
+  backup_count: 3                       # Keep 3 rotated logs

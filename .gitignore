@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# Cache
+.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+config.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug files
+_debug_*.py
+_test_*.py
+_analyze_*.py
+_deep_*.py
+_check_*.py
+*.html
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.next/
+frontend/package-lock.json
+frontend/tsconfig.tsbuildinfo
+.sisyphus/
+
+# Data
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+backups/
+data/

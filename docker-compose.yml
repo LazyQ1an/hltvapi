@@ -1,0 +1,106 @@
+# HLTV API v4.1 — Docker Compose (Full Stack)
+# Target: 2-core, 2GB RAM servers
+#
+# Usage:
+#   docker compose up -d
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+
+services:
+  # ── Backend API ──────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hltv-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - hltv-data:/app/data
+      - hltv-logs:/app/logs
+      - hltv-cache:/app/.cache
+      - hltv-backups:/app/backups
+    environment:
+      - HLTV_CLIENT__MODE=light
+      - HLTV_CLIENT__MAX_CONCURRENCY=2
+      - HLTV_RATE_LIMIT__MIN_DELAY=2.0
+      - HLTV_RATE_LIMIT__MAX_DELAY=4.0
+      - HLTV_RATE_LIMIT__REQUESTS_PER_HOUR=300
+      - HLTV_RATE_LIMIT__REQUESTS_PER_DAY=2000
+      - HLTV_CACHE__BACKEND=diskcache
+      - HLTV_LOGGING__LEVEL=INFO
+      - HLTV_CORS_ORIGINS=http://localhost:3000
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: "1400M"
+        reservations:
+          cpus: "0.5"
+          memory: "512M"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - hltv-network
+
+  # ── Frontend Dashboard ───────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hltv-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8000
+      - NEXT_PUBLIC_WS_PORT=8000
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "256M"
+        reservations:
+          cpus: "0.25"
+          memory: "128M"
+    networks:
+      - hltv-network
+
+  # ── CLI (on-demand) ──────────────────────────────────────
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hltv-cli
+    profiles:
+      - cli
+    volumes:
+      - hltv-cache:/app/.cache
+    environment:
+      - HLTV_CLIENT__MODE=light
+      - HLTV_CACHE__BACKEND=diskcache
+    entrypoint: ["python", "main.py"]
+    networks:
+      - hltv-network
+
+volumes:
+  hltv-data:
+  hltv-logs:
+  hltv-cache:
+  hltv-backups:
+
+networks:
+  hltv-network:
+    driver: bridge
