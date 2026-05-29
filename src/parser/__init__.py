@@ -1,15 +1,3 @@
-"""
-HLTV HTML parsing utilities.
-
-Provides:
-- Parser auto-detection (selectolax vs BeautifulSoup)
-- HTML extraction helpers (safe_text, select_one, select_all, etc.)
-- SemanticParser (multi-selector fallback)
-- ParserPipeline (multi-stage parsing)
-"""
-
-from __future__ import annotations
-
 from .helpers import (
     _wrap_node,
     extract_href,

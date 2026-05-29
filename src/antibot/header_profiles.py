@@ -2,46 +2,49 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
 class HeaderProfile:
-    """
-    完整的浏览器 header 配置。
+    """Complete browser header profile.
 
-    核心原则：header 不能单独随机，必须作为一个完整的 profile。
-    混用不同浏览器的 header（如 Chrome UA 但 Firefox 特有的 header）是
-    最容易被反爬检测到的特征。
+    Headers must form a coherent whole -- mixing headers from different
+    browsers (e.g. Chrome UA with Firefox-specific headers) is the easiest
+    anti-crawling detection vector.
     """
     name: str
     user_agent: str
     sec_ch_ua: str | None = None
     sec_ch_ua_platform: str | None = None
-    sec_ch_ua_mobile: str = "?0"
-    accept: str = (
+    sec_ch_ua_mobile: str | None = "?0"
+    accept: str | None = (
         "text/html,application/xhtml+xml,application/xml;q=0.9,"
         "image/avif,image/webp,image/apng,*/*;q=0.8"
     )
-    accept_language: str = "en-US,en;q=0.9"
-    accept_encoding: str = "gzip, deflate, br, zstd"
-    sec_fetch_site: str = "same-origin"
-    sec_fetch_mode: str = "navigate"
-    sec_fetch_dest: str = "document"
-    sec_fetch_user: str = "?1"
-    upgrade_insecure_requests: str = "1"
+    accept_language: str | None = "en-US,en;q=0.9"
+    accept_encoding: str | None = "gzip, deflate, br, zstd"
+    sec_fetch_site: str | None = "same-origin"
+    sec_fetch_mode: str | None = "navigate"
+    sec_fetch_dest: str | None = "document"
+    sec_fetch_user: str | None = "?1"
+    upgrade_insecure_requests: str | None = "1"
     dnt: str | None = None
     sec_gpc: str | None = None
-    priority: str = "u=0, i"
-    referer: str = "https://www.hltv.org/"
+    priority: str | None = "u=0, i"
+    referer: str | None = "https://www.hltv.org/"
 
     def to_dict(self, referer: str | None = None) -> dict[str, str]:
         headers: dict[str, str] = {
             "User-Agent": self.user_agent,
-            "Accept": self.accept,
-            "Accept-Language": self.accept_language,
-            "Accept-Encoding": self.accept_encoding,
-            "Referer": referer or self.referer,
         }
+        if self.accept:
+            headers["Accept"] = self.accept
+        if self.accept_language:
+            headers["Accept-Language"] = self.accept_language
+        if self.accept_encoding:
+            headers["Accept-Encoding"] = self.accept_encoding
+        headers["Referer"] = referer or (self.referer or "https://www.hltv.org/")
         if self.sec_ch_ua:
             headers["Sec-Ch-Ua"] = self.sec_ch_ua
         if self.sec_ch_ua_platform:
@@ -67,8 +70,6 @@ class HeaderProfile:
         return headers
 
 
-# ── Chrome Profiles ────────────────────────────────────────────
-
 CHROME_WIN = HeaderProfile(
     name="chrome_win",
     user_agent=(
@@ -77,7 +78,6 @@ CHROME_WIN = HeaderProfile(
     ),
     sec_ch_ua='"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
     sec_ch_ua_platform='"Windows"',
-    sec_fetch_user="?1",
 )
 
 CHROME_MAC = HeaderProfile(
@@ -88,7 +88,6 @@ CHROME_MAC = HeaderProfile(
     ),
     sec_ch_ua='"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
     sec_ch_ua_platform='"macOS"',
-    sec_fetch_user="?1",
 )
 
 CHROME_LINUX = HeaderProfile(
@@ -99,7 +98,6 @@ CHROME_LINUX = HeaderProfile(
     ),
     sec_ch_ua='"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
     sec_ch_ua_platform='"Linux"',
-    sec_fetch_user="?1",
 )
 
 EDGE_WIN = HeaderProfile(
@@ -110,10 +108,7 @@ EDGE_WIN = HeaderProfile(
     ),
     sec_ch_ua='"Microsoft Edge";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
     sec_ch_ua_platform='"Windows"',
-    sec_fetch_user="?1",
 )
-
-# ── Firefox Profile ────────────────────────────────────────────
 
 FIREFOX_WIN = HeaderProfile(
     name="firefox_win",
@@ -128,13 +123,9 @@ FIREFOX_WIN = HeaderProfile(
     accept_encoding="gzip, deflate, br",
     dnt="1",
     sec_gpc="1",
-    upgrade_insecure_requests="1",
-    # Firefox 不使用 Sec-Ch-Ua
     sec_ch_ua=None,
     sec_ch_ua_platform=None,
 )
-
-# ── Safari Profile ─────────────────────────────────────────────
 
 SAFARI_MAC = HeaderProfile(
     name="safari_mac",
@@ -147,7 +138,6 @@ SAFARI_MAC = HeaderProfile(
         "*/*;q=0.8"
     ),
     accept_encoding="gzip, deflate, br",
-    # Safari 不使用某些 Sec-* header
     sec_ch_ua=None,
     sec_ch_ua_platform=None,
     sec_fetch_user=None,
