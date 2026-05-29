@@ -1,11 +1,21 @@
 """
-HLTV Client — v8.0 worker-aware, micro-physics survival.
+HLTV Client — v9.0 content-driven, cross-cover, process-isolated survival.
 
 v8.0 additions:
 - HoneypotDetector: pre-parse scan before data extraction
 - TLSSessionManager: TLS session persistence for light mode
 - WorkerInjector: CDP-level injection into all targets
 - Behavior v3: micro-physics mouse + complete pointer event chains
+
+v9.0 additions:
+- ContentDrivenDelay: DOM text-density-based reading time instead of random sleep
+- PurposelessBrowsingEngine: inject idle-human noise between target pages
+- QUICUpgradeManager: Alt-Svc detection + H3 protocol state tracking
+- FontIsolationManager: CDP font-metrics interception + host font validation
+- CrossCoverStrategy: multi-profile persona rotation for household illusion
+- ChallengeResponseBrain: CF signal monitoring + reactive backoff
+- ProcessSandbox + ZombieReaper: long-term Linux process health
+- CrossModeSessionBridge: PSK sync between stealth and light modes
 """
 
 from __future__ import annotations
@@ -25,7 +35,9 @@ logger = logging.getLogger("hltv.client")
 class HLTVClient:
     """Main entry point for HLTV scraping v8.0.
 
-    Public attributes: settings, cookie_bridge, profiles, fatigue, brain, honeypot, tls
+    Public attributes: settings, cookie_bridge, profiles, fatigue, brain, honeypot, tls,
+                       content_delay, purposeless, quic, font_iso, cross_cover,
+                       challenge_brain, sandbox, cross_bridge
     """
 
     def __init__(self, mode: Literal["stealth", "light"] | None = None, settings: HLTVSettings | None = None) -> None:
@@ -40,6 +52,14 @@ class HLTVClient:
         self.brain: Any = None
         self.honeypot: Any = None
         self.tls: Any = None
+        self.content_delay: Any = None
+        self.purposeless: Any = None
+        self.quic: Any = None
+        self.font_iso: Any = None
+        self.cross_cover: Any = None
+        self.challenge_brain: Any = None
+        self.sandbox: Any = None
+        self.cross_bridge: Any = None
         self._rate_state: dict[str, Any] = {"requests_this_hour": 0, "requests_today": 0, "hour_start": tmod.time(), "day_start": tmod.time(), "consecutive_blocks": 0, "cooldown_until": 0.0, "last_request": 0.0}
         self._etag_cache: dict[str, str] = {}
         self._etag_last_modified: dict[str, str] = {}
@@ -70,6 +90,25 @@ class HLTVClient:
         self.brain = SurvivalBrain(self.settings)
         self.honeypot = HoneypotDetector()
         self.tls = TLSSessionManager(self.settings.cache_dir)
+        from src.stealth.content_driven_timing import ContentDrivenDelay
+        from src.stealth.purposeless_browser import PurposelessBrowsingEngine
+        from src.transport.quic_transport import QUICUpgradeManager
+        from src.antibot.font_isolation import FontIsolationManager
+        from src.core.profile_cross_cover import CrossCoverStrategy, ChallengeResponseBrain
+        from src.core.process_isolation import ProcessSandbox
+        from src.antibot.tls_session import CrossModeSessionBridge
+
+        self.content_delay = ContentDrivenDelay()
+        self.purposeless = PurposelessBrowsingEngine(
+            interval_min=self.settings.behavior.purposeless_interval_min,
+            interval_max=self.settings.behavior.purposeless_interval_max,
+        )
+        self.quic = QUICUpgradeManager()
+        self.font_iso = FontIsolationManager()
+        self.cross_cover = CrossCoverStrategy()
+        self.challenge_brain = ChallengeResponseBrain()
+        self.sandbox = ProcessSandbox()
+        self.cross_bridge = CrossModeSessionBridge(self.settings.cache_dir)
 
         if self.mode == "stealth":
             await self._start_stealth()
@@ -78,7 +117,7 @@ class HLTVClient:
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
         self._started = True
-        logger.info("HLTVClient v8.0 started (mode=%s)", self.mode)
+        logger.info("HLTVClient v9.0 started (mode=%s)", self.mode)
 
     async def close(self) -> None:
         if self.mode == "stealth" and self._stealth_browser:
@@ -86,6 +125,11 @@ class HLTVClient:
                 await self._stealth_browser.stop()
             except Exception as e:
                 logger.debug("Browser stop: %s", e)
+        if self.sandbox:
+            try:
+                await self.sandbox.kill_all()
+            except Exception:
+                pass
         if self._light_session:
             if self.tls:
                 self.tls.save_session(self._light_session)

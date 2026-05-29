@@ -1,5 +1,5 @@
 """
-HLTV Scraper Settings — single source of truth. v8.0
+HLTV Scraper Settings — single source of truth. v9.0
 
 All configuration lives here as dataclasses with sensible defaults.
 Environment variables override with HLTV_ prefix.
@@ -10,6 +10,16 @@ v8.0 additions:
 - Honeypot detection: semantic HTML scanning for CF traps
 - TLS persistence: session ticket cache, QUIC upgrade detection
 - Light mode: tls_session_cache, quic_upgrade
+
+v9.0 additions:
+- Content-driven timing: DOM text-density-based delays replace random sleeps
+- Purposeless browsing: insert idle-human noise between target pages
+- QUIC transport: Alt-Svc detection + H3 state tracking
+- Font isolation: CDP font-metrics interception + host font validation
+- Cross-cover strategy: multi-profile persona rotation for household illusion
+- Process isolation: hot-swapping, zombie reaper, sandbox groups
+- Cross-mode bridge: PSK sync between Nodriver and curl_cffi
+- Challenge response brain: CF signal monitoring + reactive backoff
 """
 
 from __future__ import annotations
@@ -61,6 +71,8 @@ class StealthSettings:
     use_behavior_v2: bool = True
     # v8.0
     use_worker_injection: bool = True
+    # v9.0
+    use_font_isolation: bool = True
     max_pages: int = 5
     idle_timeout: int = 300
     page_timeout: int = 30
@@ -86,6 +98,9 @@ class LightSettings:
     # v8.0
     tls_session_cache: bool = True
     quic_upgrade: bool = True
+    # v9.0
+    cross_mode_bridge: bool = True
+    psk_sync: bool = True
 
 
 @dataclass
@@ -114,6 +129,11 @@ class BehaviorSettings:
     micro_tremor_frequency: float = 10.0
     fitts_law_enabled: bool = True
     overshoot_correction: bool = True
+    # v9.0
+    content_driven_delay: bool = True
+    purposeless_browsing: bool = True
+    purposeless_interval_min: int = 3
+    purposeless_interval_max: int = 8
 
 
 @dataclass
@@ -136,6 +156,9 @@ class RateLimitSettings:
     # v8.0
     use_honeypot_detector: bool = True
     use_tls_persistence: bool = True
+    # v9.0
+    use_cross_cover: bool = True
+    use_challenge_response: bool = True
 
 
 @dataclass
@@ -163,6 +186,9 @@ class HLTVSettings:
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     cache_dir: str = ".cache/hltv"
+    # v9.0: Process isolation
+    process_sandbox_enabled: bool = True
+    zombie_reaper_interval: float = 300.0
 
 
 def _apply_env_overrides(settings: HLTVSettings) -> HLTVSettings:
@@ -180,22 +206,31 @@ def _apply_env_overrides(settings: HLTVSettings) -> HLTVSettings:
         ("HLTV_STEALTH_FACTORY", "stealth.use_fingerprint_factory"),
         ("HLTV_STEALTH_BEHAVIOR_V2", "stealth.use_behavior_v2"),
         ("HLTV_STEALTH_WORKER_INJECT", "stealth.use_worker_injection"),
+        ("HLTV_STEALTH_FONT_ISO", "stealth.use_font_isolation"),
         ("HLTV_STEALTH_MAX_MEMORY", "stealth.max_memory_mb"),
         ("HLTV_LIGHT_IMPERSONATE", "light.impersonate"),
         ("HLTV_LIGHT_JA4", "light.sync_ja4"),
         ("HLTV_LIGHT_TLS_CACHE", "light.tls_session_cache"),
         ("HLTV_LIGHT_QUIC", "light.quic_upgrade"),
+        ("HLTV_LIGHT_CROSS_MODE", "light.cross_mode_bridge"),
+        ("HLTV_LIGHT_PSK", "light.psk_sync"),
         ("HLTV_BEHAVIOR_V3", "behavior.use_v3"),
         ("HLTV_BEHAVIOR_TREMOR", "behavior.micro_tremor_enabled"),
+        ("HLTV_BEHAVIOR_CONTENT_DELAY", "behavior.content_driven_delay"),
+        ("HLTV_BEHAVIOR_PURPOSELESS", "behavior.purposeless_browsing"),
         ("HLTV_RATE_PER_HOUR", "rate_limit.requests_per_hour"),
         ("HLTV_RATE_PER_DAY", "rate_limit.requests_per_day"),
         ("HLTV_RATE_BRAIN", "rate_limit.use_survival_brain"),
         ("HLTV_RATE_CONTENT_DETECT", "rate_limit.content_change_detection"),
         ("HLTV_RATE_HONEYPOT", "rate_limit.use_honeypot_detector"),
         ("HLTV_RATE_TLS_PERSIST", "rate_limit.use_tls_persistence"),
+        ("HLTV_RATE_CROSS_COVER", "rate_limit.use_cross_cover"),
+        ("HLTV_RATE_CHALLENGE_RESP", "rate_limit.use_challenge_response"),
         ("HLTV_API_PORT", "api_port"),
         ("HLTV_LOG_LEVEL", "logging.level"),
         ("HLTV_LOG_FILE", "logging.file"),
+        ("HLTV_SANDBOX", "process_sandbox_enabled"),
+        ("HLTV_ZOMBIE_INTERVAL", "zombie_reaper_interval"),
     ]:
         if env.get(key):
             v = env[key]

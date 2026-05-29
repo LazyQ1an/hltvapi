@@ -137,6 +137,43 @@ WORKER_FINGERPRINT_SCRIPT = """
     AUTO_KEYS.forEach(function(k) {
         try { delete self[k]; } catch(e) {}
     });
+
+    // v9.0: Font metrics side-channel defense in Worker context
+    // Cloudflare probes use OffscreenCanvas in Workers to measure font rendering.
+    // OffscreenCanvas API is available in dedicated Workers (Chrome 69+).
+    if (typeof OffscreenCanvas !== 'undefined') {
+        const _origGetContext = OffscreenCanvas.prototype.getContext;
+        OffscreenCanvas.prototype.getContext = function(contextType, options) {
+            const ctx = _origGetContext.call(this, contextType, options);
+            if (ctx && contextType === '2d' && ctx.measureText) {
+                const _origMeasure = ctx.measureText.bind(ctx);
+                ctx.measureText = function(text) {
+                    const metrics = _origMeasure(text);
+                    const jitter = (Math.random() - 0.5) * 0.12;
+                    const origWidth = metrics.width;
+                    Object.defineProperty(metrics, 'width', {
+                        get: function() { return origWidth + jitter; },
+                        configurable: true
+                    });
+                    return metrics;
+                };
+            }
+            return ctx;
+        };
+    }
+
+    // v9.0: Service Worker registration detection — prevent fingerprinting
+    // via ServiceWorkerContainer and registration scope analysis
+    if (typeof ServiceWorkerContainer !== 'undefined') {
+        const _origRegister = ServiceWorkerContainer.prototype.register;
+        ServiceWorkerContainer.prototype.register = function(scriptURL, options) {
+            // Block known CF tracking SW registrations
+            if (scriptURL.includes('cdn-cgi') || scriptURL.includes('challenge')) {
+                return Promise.reject(new DOMException('SecurityError', 'SecurityError'));
+            }
+            return _origRegister.call(this, scriptURL, options);
+        };
+    }
 })();
 """
 

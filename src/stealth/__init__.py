@@ -7,6 +7,8 @@ from .fingerprint_factory import FingerprintFactory, HardwareProfile, GPU_PROFIL
 from .cdp_patches import CDP_DEEP_CLEANUP, CDP_NAVIGATION_BLOCK, CDP_FULL_ARMOR
 from .worker_injector import WorkerInjector, CROSS_CONTEXT_TIMING_SCRIPT, WORKER_FINGERPRINT_SCRIPT
 from .behavior_v3 import MicroPhysicsMouse, CompletePointerEvents, HumanBehaviorV3
+from .content_driven_timing import ContentDrivenDelay, ContentMetrics, TextDensityAnalyzer, ReadingTimeEstimator, AttentionModel, AttentionSegment
+from .purposeless_browser import PurposelessBrowsingEngine, IdleSessionSimulator, BrowsingPath
 
 __all__ = [
     "BrowserManager",
@@ -27,4 +29,13 @@ __all__ = [
     "MicroPhysicsMouse",
     "CompletePointerEvents",
     "HumanBehaviorV3",
+    "ContentDrivenDelay",
+    "ContentMetrics",
+    "TextDensityAnalyzer",
+    "ReadingTimeEstimator",
+    "AttentionModel",
+    "AttentionSegment",
+    "PurposelessBrowsingEngine",
+    "IdleSessionSimulator",
+    "BrowsingPath",
 ]

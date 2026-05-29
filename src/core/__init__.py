@@ -12,6 +12,18 @@ from .survival_brain import (
     DualRateLimiter,
     ContentChangeDetector,
 )
+from .profile_cross_cover import (
+    PersonaType,
+    ProfilePersona,
+    CrossCoverStrategy,
+    ChallengeResponseBrain,
+)
+from .process_isolation import (
+    ProcessGroup,
+    ProcessSandbox,
+    ProcessHotSwapper,
+    ZombieReaper,
+)
 
 __all__ = [
     "FetchPipeline", "FetchRequest", "FetchResponse", "ResponseValidator",
@@ -19,4 +31,8 @@ __all__ = [
     "RequestScheduler", "SchedulerService",
     "SurvivalBrain", "PriorityRequest", "PredictiveDelay",
     "DualRateLimiter", "ContentChangeDetector",
+    "PersonaType", "ProfilePersona", "CrossCoverStrategy",
+    "ChallengeResponseBrain",
+    "ProcessGroup", "ProcessSandbox", "ProcessHotSwapper",
+    "ZombieReaper",
 ]

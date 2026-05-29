@@ -16,6 +16,7 @@ from .human_pattern import HumanRequestPattern
 from .rate_limiter import AdaptiveRateLimiter
 from .honeypot_detector import HoneypotDetector, HONEYPOT_PATTERNS, HLTV_PATTERNS
 from .tls_session import TLSSessionManager
+from .font_isolation import FontIsolationManager, FONT_METRICS_INTERCEPT_SCRIPT, FontMetricEntry
 
 __all__ = [
     "BlockDetector",
@@ -37,4 +38,7 @@ __all__ = [
     "HONEYPOT_PATTERNS",
     "HLTV_PATTERNS",
     "TLSSessionManager",
+    "FontIsolationManager",
+    "FONT_METRICS_INTERCEPT_SCRIPT",
+    "FontMetricEntry",
 ]
