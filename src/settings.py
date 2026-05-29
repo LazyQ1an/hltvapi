@@ -1,16 +1,15 @@
 """
-HLTV Scraper Settings — single source of truth. v7.0
+HLTV Scraper Settings — single source of truth. v8.0
 
 All configuration lives here as dataclasses with sensible defaults.
 Environment variables override with HLTV_ prefix.
 
-v7.0 additions:
-- Survival brain: predictive delay, dual-layer rate limits, content detector
-- Behavior v2: per-profile behavior personalities
-- Fingerprint factory: complete hardware-level fingerprinting
-- Profile sleep-wake: dormant profile reactivation
-- Light mode JA4 alignment
-- Log rotation
+v8.0 additions:
+- Worker injection: CDP injection into all Worker/iframe contexts
+- Behavior v3: MicroPhysicsMouse, CompletePointerEvents, Fitts' Law
+- Honeypot detection: semantic HTML scanning for CF traps
+- TLS persistence: session ticket cache, QUIC upgrade detection
+- Light mode: tls_session_cache, quic_upgrade
 """
 
 from __future__ import annotations
@@ -36,6 +35,8 @@ class ProfileSettings:
     sleep_after_idle_hours: float = 6.0
     wake_health_threshold: float = 0.5
     wake_cooldown_hours: float = 2.0
+    # v8.0
+    use_worker_injection: bool = True
 
     def __post_init__(self) -> None:
         if not self.base_dir:
@@ -58,6 +59,8 @@ class StealthSettings:
     # v7.0
     use_fingerprint_factory: bool = True
     use_behavior_v2: bool = True
+    # v8.0
+    use_worker_injection: bool = True
     max_pages: int = 5
     idle_timeout: int = 300
     page_timeout: int = 30
@@ -80,6 +83,9 @@ class LightSettings:
     # v7.0: JA4 sync
     sync_ja4: bool = True
     sync_header_order: bool = True
+    # v8.0
+    tls_session_cache: bool = True
+    quic_upgrade: bool = True
 
 
 @dataclass
@@ -102,6 +108,12 @@ class BehaviorSettings:
     # v7.0
     use_v2: bool = True
     per_profile_behavior: bool = True
+    # v8.0
+    use_v3: bool = True
+    micro_tremor_enabled: bool = True
+    micro_tremor_frequency: float = 10.0
+    fitts_law_enabled: bool = True
+    overshoot_correction: bool = True
 
 
 @dataclass
@@ -121,6 +133,9 @@ class RateLimitSettings:
     use_survival_brain: bool = True
     dual_layer_limits: bool = True
     content_change_detection: bool = True
+    # v8.0
+    use_honeypot_detector: bool = True
+    use_tls_persistence: bool = True
 
 
 @dataclass
@@ -159,17 +174,25 @@ def _apply_env_overrides(settings: HLTVSettings) -> HLTVSettings:
     for key, val in [
         ("HLTV_PROFILE_COUNT", "profile.count"),
         ("HLTV_PROFILE_SLEEP", "profile.sleep_after_idle_hours"),
+        ("HLTV_PROFILE_WORKER_INJECT", "profile.use_worker_injection"),
         ("HLTV_STEALTH_HEADLESS", "stealth.headless"),
         ("HLTV_STEALTH_CDP_DEEP", "stealth.cdp_deep_armor"),
         ("HLTV_STEALTH_FACTORY", "stealth.use_fingerprint_factory"),
         ("HLTV_STEALTH_BEHAVIOR_V2", "stealth.use_behavior_v2"),
+        ("HLTV_STEALTH_WORKER_INJECT", "stealth.use_worker_injection"),
         ("HLTV_STEALTH_MAX_MEMORY", "stealth.max_memory_mb"),
         ("HLTV_LIGHT_IMPERSONATE", "light.impersonate"),
         ("HLTV_LIGHT_JA4", "light.sync_ja4"),
+        ("HLTV_LIGHT_TLS_CACHE", "light.tls_session_cache"),
+        ("HLTV_LIGHT_QUIC", "light.quic_upgrade"),
+        ("HLTV_BEHAVIOR_V3", "behavior.use_v3"),
+        ("HLTV_BEHAVIOR_TREMOR", "behavior.micro_tremor_enabled"),
         ("HLTV_RATE_PER_HOUR", "rate_limit.requests_per_hour"),
         ("HLTV_RATE_PER_DAY", "rate_limit.requests_per_day"),
         ("HLTV_RATE_BRAIN", "rate_limit.use_survival_brain"),
         ("HLTV_RATE_CONTENT_DETECT", "rate_limit.content_change_detection"),
+        ("HLTV_RATE_HONEYPOT", "rate_limit.use_honeypot_detector"),
+        ("HLTV_RATE_TLS_PERSIST", "rate_limit.use_tls_persistence"),
         ("HLTV_API_PORT", "api_port"),
         ("HLTV_LOG_LEVEL", "logging.level"),
         ("HLTV_LOG_FILE", "logging.file"),

@@ -1,13 +1,11 @@
 """
-HLTV Client — v7.0 survival architecture.
+HLTV Client — v8.0 worker-aware, micro-physics survival.
 
-Integrated with:
-- SurvivalBrain: priority scheduling, predictive delay, dual-layer limits,
-  content change detection
-- FingerprintFactory: complete hardware-level fingerprinting
-- HumanBehaviorV2: per-profile behavior personalities
-- ProfileManager v7.0: sleep-wake cycles
-- CookieBridge: JA4-aligned sync
+v8.0 additions:
+- HoneypotDetector: pre-parse scan before data extraction
+- TLSSessionManager: TLS session persistence for light mode
+- WorkerInjector: CDP-level injection into all targets
+- Behavior v3: micro-physics mouse + complete pointer event chains
 """
 
 from __future__ import annotations
@@ -25,20 +23,14 @@ logger = logging.getLogger("hltv.client")
 
 
 class HLTVClient:
-    """Main entry point for HLTV scraping v7.0.
+    """Main entry point for HLTV scraping v8.0.
 
-    Public attributes:
-        settings, cookie_bridge, profiles, fatigue, brain
+    Public attributes: settings, cookie_bridge, profiles, fatigue, brain, honeypot, tls
     """
 
-    def __init__(
-        self,
-        mode: Literal["stealth", "light"] | None = None,
-        settings: HLTVSettings | None = None,
-    ) -> None:
+    def __init__(self, mode: Literal["stealth", "light"] | None = None, settings: HLTVSettings | None = None) -> None:
         self.settings = settings or load_settings(mode=mode)
         self.mode: str = self.settings.mode
-
         self._stealth_browser: Any = None
         self._behavior: Any = None
         self._light_session: Any = None
@@ -46,13 +38,9 @@ class HLTVClient:
         self.cookie_bridge: Any = None
         self.fatigue: Any = None
         self.brain: Any = None
-
-        self._rate_state: dict[str, Any] = {
-            "requests_this_hour": 0, "requests_today": 0,
-            "hour_start": tmod.time(), "day_start": tmod.time(),
-            "consecutive_blocks": 0, "cooldown_until": 0.0,
-            "last_request": 0.0,
-        }
+        self.honeypot: Any = None
+        self.tls: Any = None
+        self._rate_state: dict[str, Any] = {"requests_this_hour": 0, "requests_today": 0, "hour_start": tmod.time(), "day_start": tmod.time(), "consecutive_blocks": 0, "cooldown_until": 0.0, "last_request": 0.0}
         self._etag_cache: dict[str, str] = {}
         self._etag_last_modified: dict[str, str] = {}
         self._started = False
@@ -74,10 +62,14 @@ class HLTVClient:
         from src.sync.cookie_bridge import CookieBridge
         from src.antibot.fatigue_tracker import FatigueTracker
         from src.core.survival_brain import SurvivalBrain
+        from src.antibot.honeypot_detector import HoneypotDetector
+        from src.antibot.tls_session import TLSSessionManager
 
         self.cookie_bridge = CookieBridge(self.settings.cache_dir)
         self.fatigue = FatigueTracker(self.settings)
         self.brain = SurvivalBrain(self.settings)
+        self.honeypot = HoneypotDetector()
+        self.tls = TLSSessionManager(self.settings.cache_dir)
 
         if self.mode == "stealth":
             await self._start_stealth()
@@ -86,7 +78,7 @@ class HLTVClient:
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
         self._started = True
-        logger.info("HLTVClient v7.0 started (mode=%s, brain=%s)", self.mode, "on" if self.settings.rate_limit.use_survival_brain else "off")
+        logger.info("HLTVClient v8.0 started (mode=%s)", self.mode)
 
     async def close(self) -> None:
         if self.mode == "stealth" and self._stealth_browser:
@@ -95,6 +87,8 @@ class HLTVClient:
             except Exception as e:
                 logger.debug("Browser stop: %s", e)
         if self._light_session:
+            if self.tls:
+                self.tls.save_session(self._light_session)
             try:
                 await self._light_session.close()
             except Exception:
@@ -105,12 +99,14 @@ class HLTVClient:
         from src.profiles.manager import ProfileManager
         self._profiles = ProfileManager(self.settings.profile)
         await self._profiles.initialize()
-        # Behavior v2 or v1
         if self.settings.behavior.use_v2:
-            from src.stealth.behavior_v2 import HumanBehaviorV2, BehaviorProfile
-            seed = self._profiles.current.fingerprint_seed if self._profiles.current else 42
-            bp = BehaviorProfile.from_seed(seed)
-            self._behavior = HumanBehaviorV2(self.settings.behavior, bp)
+            try:
+                from src.stealth.behavior_v3 import HumanBehaviorV3
+                self._behavior = HumanBehaviorV3(self.settings.behavior)
+            except ImportError:
+                from src.stealth.behavior_v2 import HumanBehaviorV2, BehaviorProfile
+                seed = self._profiles.current.fingerprint_seed if self._profiles.current else 42
+                self._behavior = HumanBehaviorV2(self.settings.behavior, BehaviorProfile.from_seed(seed))
         else:
             from src.stealth.simulator import HumanBehaviorSimulator
             self._behavior = HumanBehaviorSimulator(self.settings.behavior)
@@ -120,52 +116,45 @@ class HLTVClient:
         try:
             from curl_cffi.requests import AsyncSession
         except ImportError:
-            raise RuntimeError("curl_cffi not installed. Run: pip install curl_cffi") from None
-        self._light_session = AsyncSession(
-            impersonate=self.settings.light.impersonate,  # type: ignore[arg-type]
-            timeout=self.settings.light.timeout,
-        )
+            raise RuntimeError("curl_cffi not installed.") from None
+        self._light_session = AsyncSession(impersonate=self.settings.light.impersonate, timeout=self.settings.light.timeout)  # type: ignore[arg-type]
+        if self.tls:
+            self.tls.restore_session(self._light_session)
         if self.cookie_bridge:
             self.cookie_bridge.inject_to_curl_session(self._light_session)
-
-    # ── Main API ─────────────────────────────────
+        logger.info("Light mode ready (impersonate=%s, tls=%s)", self.settings.light.impersonate, "restored" if self.tls and self.tls._tickets else "fresh")
 
     async def get(self, url: str) -> str:
         if not self._started:
             raise RuntimeError("Client not started.")
-
-        # Hibernation check
         if self.settings.rate_limit.hibernation_enabled and self.fatigue and self.fatigue.should_hibernate():
-            remaining = self.fatigue.hibernation_remaining
-            raise _HibernationError(f"Hibernating {remaining/3600:.1f}h remaining")
+            raise _HibernationError(f"Hibernating {self.fatigue.hibernation_remaining/3600:.1f}h")
 
-        # Survival brain: should we request?
         request_type = _classify_request_type(url)
         profile_health = self._profiles.current.health_score if self._profiles and self._profiles.current else 1.0
         fatigue_score = self.fatigue.score() if self.fatigue else 0.0
 
         if self.settings.rate_limit.use_survival_brain and self.brain:
-            can_proceed, delay = await self.brain.should_request(
-                url,
-                profile_id=self._profiles.current.name if self._profiles and self._profiles.current else "default",
-                request_type=request_type,
-                profile_health=profile_health,
-                fatigue_score=fatigue_score,
-            )
+            can_proceed, delay = await self.brain.should_request(url, profile_id=self._profiles.current.name if self._profiles and self._profiles.current else "default", request_type=request_type, profile_health=profile_health, fatigue_score=fatigue_score)
             if not can_proceed:
                 raise _RateLimitError(f"Rate limit: {url}")
-            # Apply the predicted delay
             since_last = tmod.time() - self._rate_state["last_request"]
             if since_last < delay:
                 await asyncio.sleep(delay - since_last)
         else:
             await self._rate_limit_wait(url)
 
-        # Execute
-        if self.mode == "stealth":
-            return await self._get_stealth(url)
-        else:
-            return await self._get_light(url)
+        html = await (self._get_stealth(url) if self.mode == "stealth" else self._get_light(url))
+
+        # Honeypot scan (v8.0)
+        if self.honeypot and html:
+            scan = await self.honeypot.scan(html)
+            if scan["threat_level"] in ("high",):
+                logger.warning("Honeypot alert for %s: %s", url, scan["details"])
+                if scan["recommendation"] == "abort_and_sleep":
+                    raise _BlockedError(f"Honeypot detected: {url}")
+
+        return html
 
     async def get_json(self, url: str) -> dict[str, Any]:
         import json
@@ -193,8 +182,6 @@ class HLTVClient:
     async def _get_curl_session(self) -> Any | None:
         return self._light_session if self.mode == "light" and self._light_session else None
 
-    # ── Stealth ──────────────────────────────────
-
     async def _get_stealth(self, url: str) -> str:
         max_retries = 3
         start_time = tmod.time()
@@ -204,17 +191,11 @@ class HLTVClient:
                 if self._stealth_browser:
                     await self._stealth_browser.stop()
                     self._stealth_browser = None
-                # Update behavior profile for new profile
-                if self.settings.behavior.use_v2 and self._profiles.current:
-                    from src.stealth.behavior_v2 import BehaviorProfile
-                    self._behavior._bp = BehaviorProfile.from_seed(self._profiles.current.fingerprint_seed)
-
             if self._stealth_browser is None:
                 from src.stealth.browser import BrowserManager
                 profile = self._profiles.current if self._profiles else None
                 self._stealth_browser = BrowserManager(settings=self.settings.stealth, profile=profile)
                 await self._stealth_browser.start()
-
             try:
                 html, status = await self._stealth_browser.fetch(url, warmup=attempt == 0, behavior=self._behavior)
                 rt = tmod.time() - start_time
@@ -232,7 +213,6 @@ class HLTVClient:
                     if cookies:
                         self.cookie_bridge.harvest_from_stealth(cookies)
                         self.fatigue.record_cookie("cf_clearance")
-                    # Content change detection
                     if self.settings.rate_limit.content_change_detection and self.brain:
                         self.brain.check_content_changed(url, html)
                     self._rate_state["last_request"] = tmod.time()
@@ -259,8 +239,6 @@ class HLTVClient:
         from src.exceptions import BlockedError
         raise BlockedError(message=f"All {max_retries} attempts blocked: {url}", url=url)
 
-    # ── Light ────────────────────────────────────
-
     async def _get_light(self, url: str) -> str:
         if self._light_session is None:
             raise RuntimeError("Light session not initialized")
@@ -280,6 +258,11 @@ class HLTVClient:
             try:
                 resp = await self._light_session.get(url, headers=headers)
                 rt = tmod.time() - start_time
+                # Save TLS state
+                if self.tls:
+                    self.tls.save_session(self._light_session)
+                    if hasattr(resp, 'headers'):
+                        self.tls.save_response_headers("hltv.org", dict(resp.headers))
                 if resp.status_code == 304:
                     self._rate_state["last_request"] = tmod.time()
                     return ""
@@ -289,10 +272,6 @@ class HLTVClient:
                         self._etag_cache[url] = resp.headers["ETag"]
                     if "Last-Modified" in resp.headers:
                         self._etag_last_modified[url] = resp.headers["Last-Modified"]
-                    if len(self._etag_cache) > self.settings.light.etag_cache_size:
-                        oldest = sorted(self._etag_cache.keys())[:100]
-                        for k in oldest:
-                            self._etag_cache.pop(k, None)
                     if not _looks_blocked(html) and len(html) > 5000:
                         self._rate_state["consecutive_blocks"] = 0
                         self.fatigue.record_request(response_time=rt, blocked=False)
@@ -327,11 +306,9 @@ class HLTVClient:
             self._rate_state["requests_today"] = 0
             self._rate_state["day_start"] = now
         if self._rate_state["requests_this_hour"] >= rl.requests_per_hour:
-            wait = 3600 - (now - self._rate_state["hour_start"])
-            await asyncio.sleep(min(wait, 3600))
+            await asyncio.sleep(min(3600 - (now - self._rate_state["hour_start"]), 3600))
         if self._rate_state["requests_today"] >= rl.requests_per_day:
-            wait = 86400 - (now - self._rate_state["day_start"])
-            await asyncio.sleep(min(wait, 86400))
+            await asyncio.sleep(min(86400 - (now - self._rate_state["day_start"]), 86400))
         if now < self._rate_state["cooldown_until"]:
             await asyncio.sleep(self._rate_state["cooldown_until"] - now)
         base_delay = random.uniform(rl.min_delay, rl.max_delay)
@@ -353,28 +330,24 @@ class HLTVClient:
             return headers
         profile = self._profiles.current
         versions = ["131.0.0.0", "133.0.0.0", "136.0.0.0"]
-        ver = versions[profile.fingerprint_seed % len(versions)]
-        headers["User-Agent"] = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{ver} Safari/537.36"
+        headers["User-Agent"] = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{versions[profile.fingerprint_seed % len(versions)]} Safari/537.36"
         return headers
 
     def get_stats(self) -> dict[str, Any]:
         now = tmod.time()
-        stats: dict[str, Any] = {
-            "mode": self.mode, "started": self._started,
-            "requests_this_hour": self._rate_state["requests_this_hour"],
-            "requests_today": self._rate_state["requests_today"],
-            "consecutive_blocks": self._rate_state["consecutive_blocks"],
-            "cooldown_active": now < self._rate_state["cooldown_until"],
-            "cookie_bridge": {
-                "has_cf_clearance": bool(self.cookie_bridge and self.cookie_bridge.get_cf_clearance()),
-                "clearance_valid": bool(self.cookie_bridge and self.cookie_bridge.has_valid_clearance),
-            } if self.cookie_bridge else {},
-            "profiles": self._profiles.get_health_report() if self._profiles else {},
-        }
+        stats: dict[str, Any] = {"mode": self.mode, "started": self._started, "requests_this_hour": self._rate_state["requests_this_hour"], "requests_today": self._rate_state["requests_today"], "consecutive_blocks": self._rate_state["consecutive_blocks"], "cooldown_active": now < self._rate_state["cooldown_until"]}
+        if self.cookie_bridge:
+            stats["cookie_bridge"] = {"has_cf_clearance": bool(self.cookie_bridge.get_cf_clearance()), "clearance_valid": self.cookie_bridge.has_valid_clearance}
+        if self._profiles:
+            stats["profiles"] = self._profiles.get_health_report()
         if self.fatigue:
             stats["fatigue"] = self.fatigue.get_stats()
         if self.brain:
             stats["brain"] = self.brain.get_stats()
+        if self.honeypot:
+            stats["honeypot"] = self.honeypot.get_stats()
+        if self.tls:
+            stats["tls"] = {"quic_domains": list(self.tls.quic_domains), "tickets": len(self.tls._tickets)}
         return stats
 
 
@@ -386,18 +359,20 @@ class _RateLimitError(Exception):
     pass
 
 
+class _BlockedError(Exception):
+    pass
+
+
 def _looks_blocked(html: str) -> bool:
     if not html or len(html) < 300:
         return True
     lower = html.lower()
-    block_markers = ["just a moment", "checking your browser", "cf-browser-verification", "cf_challenge", "__cf_chl_f_tk", "challenge-platform", "turnstile", "captcha", "blocked"]
-    hltv_markers = ["hltv", "nav-bar", "standard-box", "match-wrapper", "topnav", "sidebar"]
-    return any(m in lower for m in block_markers) and not any(m in lower for m in hltv_markers)
+    return any(m in lower for m in ("just a moment", "checking your browser", "cf-browser-verification", "cf_challenge", "__cf_chl_f_tk", "challenge-platform", "turnstile", "captcha", "blocked")) and not any(m in lower for m in ("hltv", "nav-bar", "standard-box", "match-wrapper", "topnav", "sidebar"))
 
 
 def _is_detail_page(url: str) -> bool:
     path = urlparse(url).path.lower()
-    return (("/matches/" in path and path.count("/") > 3) or ("/team/" in path) or ("/player/" in path) or ("/news/" in path and path.count("/") > 3) or ("/results/" in path and path.count("/") > 3))
+    return ("/matches/" in path and path.count("/") > 3) or "/team/" in path or "/player/" in path or ("/news/" in path and path.count("/") > 3) or ("/results/" in path and path.count("/") > 3)
 
 
 def _classify_request_type(url: str) -> str:
@@ -408,24 +383,12 @@ def _classify_request_type(url: str) -> str:
         return "detail"
     if any(p in path for p in ("/matches", "/results", "/ranking", "/events", "/stats")):
         return "listing"
-    if path in ("/", ""):
-        return "home"
-    return "other"
+    return "home" if path in ("/", "") else "other"
 
 
 def _build_light_headers(url: str) -> dict[str, str]:
     parsed = urlparse(url)
-    return {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Referer": f"{parsed.scheme}://{parsed.netloc}/",
-        "DNT": "1", "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin", "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0",
-    }
+    return {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9", "Accept-Encoding": "gzip, deflate, br", "Referer": f"{parsed.scheme}://{parsed.netloc}/", "DNT": "1", "Upgrade-Insecure-Requests": "1", "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "same-origin", "Sec-Fetch-User": "?1", "Cache-Control": "max-age=0"}
 
 
 __all__ = ["HLTVClient"]

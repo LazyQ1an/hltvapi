@@ -14,6 +14,8 @@ from .fingerprint_spoofer import (
 from .header_profiles import HeaderProfile, random_profile, random_referer
 from .human_pattern import HumanRequestPattern
 from .rate_limiter import AdaptiveRateLimiter
+from .honeypot_detector import HoneypotDetector, HONEYPOT_PATTERNS, HLTV_PATTERNS
+from .tls_session import TLSSessionManager
 
 __all__ = [
     "BlockDetector",
@@ -31,4 +33,8 @@ __all__ = [
     "random_referer",
     "HumanRequestPattern",
     "AdaptiveRateLimiter",
+    "HoneypotDetector",
+    "HONEYPOT_PATTERNS",
+    "HLTV_PATTERNS",
+    "TLSSessionManager",
 ]
