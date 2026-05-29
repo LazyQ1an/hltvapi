@@ -10,10 +10,11 @@ base_url: "https://www.hltv.org"
 # user_agent: "Mozilla/5.0 (...) Chrome/124.0.0.0 Safari/537.36"
 
 # ── Client Mode ─────────────────────────────────────────────────────
-# "light"   = httpx/curl_cffi only — fastest, no browser overhead
-# "stealth" = auto-escalate to Playwright when Cloudflare detected
+# "light"    = httpx/curl_cffi only — fastest, no browser overhead
+# "stealth"  = auto-escalate to Playwright when Cloudflare detected
+# "nodriver" = drive system Chrome with Nodriver — best anti-detection (requires Chrome)
 client:
-  mode: "light"               # light | stealth
+  mode: "light"               # light | stealth | nodriver
   timeout: 30                 # Request timeout in seconds
   max_retries: 3              # Max retry attempts
   retry_delay: 1.0            # Base retry delay (seconds)

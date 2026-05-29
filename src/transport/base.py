@@ -22,7 +22,7 @@ class TransportSession:
 
     def __init__(
         self,
-        transport: Literal["curl", "httpx", "playwright"],
+        transport: Literal["curl", "httpx", "playwright", "nodriver"],
         identity: SessionIdentity | None = None,
     ) -> None:
         self.id: str = uuid.uuid4().hex[:12]
@@ -40,6 +40,10 @@ class TransportSession:
 
         # 健康度 0.0 (死亡) ~ 1.0 (完美)
         self.health_score = 1.0
+
+        # Optional anti-detection (set by transport pools)
+        self._stealth_script: str | None = None
+        self._behavior: dict[str, Any] = {}
 
         # 封禁状态
         self.banned = False
@@ -86,7 +90,7 @@ class TransportSession:
     @property
     def is_expired(self) -> bool:
         """session 是否已达最大请求数或寿命。"""
-        max_requests = {"curl": 200, "httpx": 200, "playwright": 100}
+        max_requests = {"curl": 200, "httpx": 200, "playwright": 100, "nodriver": 80}
         max_age = 86400  # 24h
         return (
             self.request_count >= max_requests.get(self.transport, 200)

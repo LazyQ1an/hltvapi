@@ -41,6 +41,7 @@ from src.antibot.rate_limiter import AdaptiveRateLimiter
 from src.exceptions import BlockedError, HTTPError, RateLimitError
 from src.transport.session_pool import SessionPool
 from src.storage.archive import HTMLArchive
+from src.transport.pool.nodriver_pool import nodriver_fetch
 
 logger = logging.getLogger("hltv.core.pipeline")
 
@@ -54,6 +55,7 @@ class FetchRequest:
     prefer_curl: bool = False
     bypass_cache: bool = False
     bypass_rate_limit: bool = False
+    force_nodriver: bool = False
     priority: int = 0
     dedup_key: str | None = None
     metadata: dict = field(default_factory=dict)
@@ -254,10 +256,11 @@ class FetchPipeline:
                 await asyncio.sleep(hdelay)
 
         # 5. 选择 transport & session
-        transport = "playwright" if request.force_playwright else (
+        transport = "nodriver" if request.force_nodriver else (
+            "playwright" if request.force_playwright else (
             "curl" if request.prefer_curl else
             self._session_pool.best_transport(request.url, False)
-        )
+        ))
 
         session = None
         try:
@@ -307,7 +310,7 @@ class FetchPipeline:
                     is_cf = block_result.get("block_type") in (
                         "cloudflare_challenge", "blocked",
                     )
-                    if is_cf and transport != "playwright":
+                    if is_cf and transport not in ("playwright", "nodriver"):
                         logger.warning(
                             "Soft CF block on %s, escalating to Playwright: %s",
                             transport, request.url,
@@ -318,6 +321,14 @@ class FetchPipeline:
                                 return await self._retry_fallback(request, pw_session, "playwright")
                         except Exception as e:
                             logger.warning("Playwright escalation failed: %s", e)
+
+                    try:
+                        nd_session = await self._session_pool.acquire("nodriver")
+                        if nd_session:
+                            logger.warning("Escalating to Nodriver: %s", request.url)
+                            return await self._retry_fallback(request, nd_session, "nodriver")
+                    except Exception as e:
+                        logger.warning("Nodriver escalation failed: %s", e)
 
                     if transport == "curl" and not request.force_playwright:
                         logger.warning("Soft blocked on curl, re-trying with httpx: %s", request.url)
@@ -337,7 +348,7 @@ class FetchPipeline:
                 is_cf = block_result.get("block_type") in (
                     "cloudflare_challenge", "blocked", "service_unavailable",
                 )
-                if is_cf and transport != "playwright":
+                if is_cf and transport not in ("playwright", "nodriver"):
                     logger.warning(
                         "CF challenge detected on %s (confidence=%.2f), escalating to Playwright: %s",
                         transport, block_result["confidence"], request.url,
@@ -481,6 +492,9 @@ class FetchPipeline:
         elif transport == "playwright":
             return await self._execute_playwright(url, session)
 
+        elif transport == "nodriver":
+            return await self._execute_nodriver(url, session)
+
         raise HTTPError(message=f"Unknown transport: {transport}", url=url)
 
     async def _execute_playwright(self, url: str, session: Any) -> tuple[str, int]:
@@ -573,6 +587,18 @@ class FetchPipeline:
         except Exception as e:
             raise HTTPError(
                 message=f"Playwright request failed: {e}",
+                url=url,
+            )
+
+    async def _execute_nodriver(self, url: str, session: Any) -> tuple[str, int]:
+        try:
+            html, status_code = await nodriver_fetch(session, url)
+            if hasattr(session, "cookie_jar") and session.cookie_jar:
+                self._session_pool.share_cookies(session.cookie_jar, "nodriver")
+            return html, status_code
+        except Exception as e:
+            raise HTTPError(
+                message=f"Nodriver request failed: {e}",
                 url=url,
             )
 

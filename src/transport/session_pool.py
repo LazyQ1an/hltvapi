@@ -9,6 +9,7 @@ from .fingerprint import TLSFingerprintManager
 from .pool.curl_pool import CurlSessionPool
 from .pool.httpx_pool import HttpxSessionPool
 from .pool.playwright_pool import PlaywrightContextPool
+from .pool.nodriver_pool import NodriverContextPool
 
 logger = logging.getLogger("hltv.transport.session_pool")
 
@@ -59,12 +60,16 @@ class SessionPool:
             size=playwright_count,
             config=config,
         )
+        self._nodriver_pool = NodriverContextPool(
+            size=playwright_count,
+            config=config,
+        )
 
         self._lock = asyncio.Lock()
 
     async def acquire(
         self,
-        transport: Literal["curl", "httpx", "playwright"] = "curl",
+        transport: Literal["curl", "httpx", "playwright", "nodriver"] = "curl",
     ) -> TransportSession:
         """
         Acquire a transport session.
@@ -219,7 +224,7 @@ class SessionPool:
 
     @property
     def _pools(self) -> list:
-        return [self._curl_pool, self._httpx_pool, self._playwright_pool]
+        return [self._curl_pool, self._httpx_pool, self._playwright_pool, self._nodriver_pool]
 
     def _get_pool(self, transport: str):
         if transport == "curl":
@@ -228,6 +233,8 @@ class SessionPool:
             return self._httpx_pool
         elif transport == "playwright":
             return self._playwright_pool
+        elif transport == "nodriver":
+            return self._nodriver_pool
         raise ValueError(f"Unknown transport: {transport}")
 
     def best_transport(self, url: str, stealth_mode: bool = False) -> str:
@@ -247,7 +254,7 @@ class SessionPool:
         httpx_has = self._httpx_pool.has_available()
 
         if stealth_mode and not curl_has and not httpx_has:
-            return "playwright"
+            return "nodriver"
         if curl_has:
             return "curl"
         if httpx_has:
@@ -272,5 +279,10 @@ class SessionPool:
                 "total": self._playwright_pool.size,
                 "available": self._playwright_pool.available_count(),
                 "sessions": [s.to_dict() for s in self._playwright_pool.sessions],
+            },
+            "nodriver": {
+                "total": self._nodriver_pool.size,
+                "available": self._nodriver_pool.available_count(),
+                "sessions": [s.to_dict() for s in self._nodriver_pool.sessions],
             },
         }

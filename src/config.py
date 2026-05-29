@@ -67,7 +67,7 @@ class CacheConfig(BaseSettings):
 class ClientConfig(BaseSettings):
     """HTTP client and anti-bot configuration."""
 
-    mode: Literal["light", "stealth"] = "light"
+    mode: Literal["light", "stealth", "nodriver"] = "light"
     """Request mode: 'light' = httpx/curl_cffi only, 'stealth' = use Playwright when needed."""
 
     timeout: int = 30

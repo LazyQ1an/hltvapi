@@ -116,6 +116,7 @@ class HLTVClient:
         *,
         use_curl: bool = False,
         force_playwright: bool = False,
+        force_nodriver: bool = False,
         cache_ttl: int | None = None,
         cache_key: str | None = None,
         **kwargs: Any,
@@ -130,6 +131,7 @@ class HLTVClient:
             url: Target URL.
             use_curl: Prefer curl_cffi transport.
             force_playwright: Force Playwright browser rendering.
+            force_nodriver: Force Nodriver (stealth Chrome) for maximum anti-detection.
             cache_ttl: Override cache TTL in seconds.
             cache_key: Custom cache key (defaults to URL).
 

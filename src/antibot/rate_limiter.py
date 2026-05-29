@@ -9,15 +9,9 @@ from typing import Any
 
 class AdaptiveRateLimiter:
     """
-    基于滑动时间窗口的智能速率限制器 v2。
-
-    核心升级：
-    1. 响应时间感知调速 —— 慢响应 = 可能被限速，自动降速
-    2. 预测式调速 —— 基于历史 block 频率预测未来风险，提前降速
-    3. 渐进恢复 —— block 消失后不立即恢复，而是逐步试探性恢复
-    4. 路径级限速 —— 不同路径独立限速（详情页 vs 列表页）
-    5. 自适应窗口 —— 根据当前风险等级动态调整观测窗口
-    6. 紧急制动 —— 连续 block 时快速进入冷却期
+    鍩轰簬婊戝姩鏃堕棿绐楀彛鐨勬櫤鑳介€熺巼闄愬埗鍣?v2銆?
+    鏍稿績鍗囩骇锛?    1. 鍝嶅簲鏃堕棿鎰熺煡璋冮€?鈥斺€?鎱㈠搷搴?= 鍙兘琚檺閫燂紝鑷姩闄嶉€?    2. 棰勬祴寮忚皟閫?鈥斺€?鍩轰簬鍘嗗彶 block 棰戠巼棰勬祴鏈潵椋庨櫓锛屾彁鍓嶉檷閫?    3. 娓愯繘鎭㈠ 鈥斺€?block 娑堝け鍚庝笉绔嬪嵆鎭㈠锛岃€屾槸閫愭璇曟帰鎬ф仮澶?    4. 璺緞绾ч檺閫?鈥斺€?涓嶅悓璺緞鐙珛闄愰€燂紙璇︽儏椤?vs 鍒楄〃椤碉級
+    5. 鑷€傚簲绐楀彛 鈥斺€?鏍规嵁褰撳墠椋庨櫓绛夌骇鍔ㄦ€佽皟鏁磋娴嬬獥鍙?    6. 绱ф€ュ埗鍔?鈥斺€?杩炵画 block 鏃跺揩閫熻繘鍏ュ喎鍗存湡
     """
 
     def __init__(
@@ -53,6 +47,25 @@ class AdaptiveRateLimiter:
         self._recovery_target: float = min_delay
         self._recovery_step: int = 0
         self._recovery_steps_total: int = 10
+        # --- Per-endpoint minimum delays (seconds) ---
+        # (min, max) — random.uniform drawn each acquire
+        self._endpoint_delays: dict[str, tuple[float, float]] = {
+            "matches": (3.0, 8.0),
+            "results": (3.0, 8.0),
+            "events": (3.0, 8.0),
+            "ranking": (3.0, 10.0),
+            "news": (3.0, 8.0),
+            "stats": (3.0, 10.0),
+            "match_detail": (6.0, 15.0),
+            "player_detail": (6.0, 15.0),
+            "team_detail": (6.0, 15.0),
+            "news_detail": (8.0, 20.0),
+            "event_detail": (5.0, 15.0),
+            "search": (4.0, 10.0),
+            "home": (2.0, 5.0),
+        }
+        self._endpoint_classify_cache: dict[str, str] = {}
+
 
         self._path_state: dict[str, dict[str, Any]] = {}
 
@@ -278,17 +291,69 @@ class AdaptiveRateLimiter:
                 self._current_delay * 1.1,
             )
 
+    def _classify_endpoint(self, url: str | None = None) -> str:
+        if not url:
+            return "home"
+        cached = self._endpoint_classify_cache.get(url)
+        if cached:
+            return cached
+        try:
+            from urllib.parse import urlparse
+            path = urlparse(url).path.lower()
+        except Exception:
+            return "home"
+        if "/search" in path:
+            cat = "search"
+        elif "/matches/" in path and path.count("/") > 3:
+            cat = "match_detail"
+        elif "/matches" in path:
+            cat = "matches"
+        elif "/results/" in path and path.count("/") > 3:
+            cat = "match_detail"
+        elif "/results" in path:
+            cat = "results"
+        elif "/ranking" in path:
+            cat = "ranking"
+        elif "/team/" in path:
+            cat = "team_detail"
+        elif "/player/" in path:
+            cat = "player_detail"
+        elif "/news/" in path and path.count("/") > 3:
+            cat = "news_detail"
+        elif "/news" in path:
+            cat = "news"
+        elif "/events/" in path and path.count("/") > 3:
+            cat = "event_detail"
+        elif "/events" in path:
+            cat = "events"
+        elif "/stats" in path:
+            cat = "stats"
+        else:
+            cat = "home"
+        if len(self._endpoint_classify_cache) > 2000:
+            self._endpoint_classify_cache.clear()
+        self._endpoint_classify_cache[url] = cat
+        return cat
+
+    def _get_endpoint_delay(self, url: str | None = None) -> float:
+        cat = self._classify_endpoint(url)
+        delay_range = self._endpoint_delays.get(cat)
+        if delay_range:
+            return random.uniform(delay_range[0], delay_range[1])
+        return 0.0
+
     def _get_path_delay(self, url: str | None = None) -> float:
         if not url:
-            return 0.0
+            return self._get_endpoint_delay(None)
         from urllib.parse import urlparse
         path = urlparse(url).path
         ps = self._path_state.get(path)
+        endpoint_delay = self._get_endpoint_delay(url)
         if not ps:
-            return 0.0
+            return endpoint_delay
         if ps.get("blocked_recently"):
-            return self._base_min * 2.0
-        return 0.0
+            return max(endpoint_delay, self._base_min * 2.0)
+        return endpoint_delay
 
     def _update_path_state(self, url: str | None, blocked: bool) -> None:
         if not url:

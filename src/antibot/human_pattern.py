@@ -270,6 +270,74 @@ class HumanRequestPattern:
             return True
         return False
 
+
+    def get_warmup_paths(self, target_url: str | None = None, count: int = 3) -> list[str]:
+        """
+        Generate a natural warmup browsing path before visiting the target.
+
+        Simulates: homepage -> listing page -> target detail page.
+
+        Args:
+            target_url: The ultimate destination URL.
+            count: Number of warmup URLs to generate (1-5).
+
+        Returns:
+            List of URLs in natural browsing order.
+        """
+        count = max(1, min(count, 5))
+        target_type = self._classify_url(target_url) if target_url else "home"
+        warmup: list[str] = []
+
+        # Always start with homepage
+        warmup.append("https://www.hltv.org/")
+
+        if count >= 2:
+            # Pick a natural intermediate page based on target type
+            if target_type in ("match_detail", "results", "match_detail"):
+                warmup.append("https://www.hltv.org/results")
+            elif target_type in ("team_detail", "ranking"):
+                warmup.append("https://www.hltv.org/ranking")
+            elif target_type in ("player_detail", "stats"):
+                warmup.append("https://www.hltv.org/stats")
+            elif target_type in ("news_detail", "news"):
+                warmup.append("https://www.hltv.org/")
+            elif target_type in ("event_detail", "events"):
+                warmup.append("https://www.hltv.org/events")
+            else:
+                warmup.append("https://www.hltv.org/matches")
+
+        if count >= 3 and target_type not in ("home", "search"):
+            warmup.append(self._pick_related_page(target_type))
+
+        return warmup[:count]
+
+    def _pick_related_page(self, target_type: str) -> str:
+        """Pick a semantically-related page for the third warmup hop."""
+        related: dict[str, list[str]] = {
+            "match_detail": [
+                "https://www.hltv.org/results",
+                "https://www.hltv.org/events",
+            ],
+            "player_detail": [
+                "https://www.hltv.org/stats",
+                "https://www.hltv.org/ranking",
+            ],
+            "team_detail": [
+                "https://www.hltv.org/ranking",
+                "https://www.hltv.org/matches",
+            ],
+            "news_detail": [
+                "https://www.hltv.org/",
+                "https://www.hltv.org/results",
+            ],
+            "event_detail": [
+                "https://www.hltv.org/matches",
+                "https://www.hltv.org/results",
+            ],
+        }
+        pool = related.get(target_type, ["https://www.hltv.org/matches"])
+        return random.choice(pool)
+
     def get_stats(self) -> dict[str, Any]:
         return {
             "burst_position": f"{self._requests_in_burst}/{self._current_burst_size}",
