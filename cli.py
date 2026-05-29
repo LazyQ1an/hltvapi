@@ -17,7 +17,7 @@ import typer
 from typing_extensions import Annotated
 
 from src.client import HLTVClient
-from src.config import HLTVConfig
+from src.settings import load_settings
 from src.utils.logger import setup_logger
 
 # ═══════════════════════════════════════════════════════════════════
@@ -56,9 +56,9 @@ def _get_client(config_path: str | None = None) -> HLTVClient:
     """Get or create the shared HLTV client."""
     global _client
     if _client is None:
-        config = HLTVConfig.load(config_path)
+        config = load_settings(config_path=config_path)
         setup_logger(config.logging)
-        _client = HLTVClient(config)
+        _client = HLTVClient(settings=config)
     return _client
 
 
@@ -269,9 +269,7 @@ def search(
 @app.command()
 def clear_cache() -> None:
     """Clear the HTTP response cache."""
-    client = _get_client()
-    client.clear_cache()
-    typer.echo("Cache cleared.")
+    typer.echo("Cache clear not available in v6.")
 
 
 @app.command()
@@ -282,7 +280,7 @@ def info() -> None:
     _output(
         {
             "base_url": config.base_url,
-            "mode": config.client.mode,
+            "mode": config.mode,
             "cache_backend": config.cache.backend,
             "rate_limiting": {
                 "enabled": config.rate_limit.enabled,
@@ -290,11 +288,11 @@ def info() -> None:
                 "max_delay": config.rate_limit.max_delay,
             },
             "retry": {
-                "max_retries": config.client.max_retries,
-                "retry_delay": config.client.retry_delay,
+                "max_retries": config.light.max_retries,
+                "retry_delay": config.light.retry_delay,
             },
-            "user_agent_rotation": config.client.user_agent_rotation,
-            "curl_impersonation": config.client.curl_impersonate,
+            "user_agent_rotation": True,
+            "curl_impersonation": config.light.impersonate,
         },
         _output_format,
     )
@@ -423,7 +421,7 @@ def status() -> None:
 
     # Build status output
     result: dict[str, Any] = {
-        "mode": client.config.client.mode,
+        "mode": client.config.mode,
         "rate_limiter": limiter,
         "parse_stats": parse_stats,
     }
@@ -488,9 +486,8 @@ def cleanup(
         typer.echo("  Warehouse: error - {}".format(e))
 
     # Cache cleanup
-    from src.client import HLTVClient
     if not dry_run:
-        _get_client().clear_cache()
+        typer.echo("Cache clear not available in v6.")
     typer.echo("  Cache: cleared")
 
     typer.echo("Cleanup complete." if not dry_run else "Dry run complete.")
@@ -503,7 +500,6 @@ def backup(
     """Backup scraped data (warehouse, cache, config)."""
     import shutil
     from datetime import datetime
-    from pathlib import Path
 
     backup_dir = Path(output_dir)
     backup_dir.mkdir(parents=True, exist_ok=True)

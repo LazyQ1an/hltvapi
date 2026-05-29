@@ -1,32 +1,70 @@
 """
-HLTV Scraper - Entry point.
+HLTV Scraper — Entry point.
 
-Provides unified access to both CLI and API interfaces.
+Three modes of operation:
+  python main.py demo           Quick demo: fetch a page with stealth mode
+  python main.py serve          Start FastAPI server (for Discord bots, etc.)
+  python main.py <command>      CLI mode (matches, teams, players, ranking, etc.)
 
-Usage:
-    # CLI mode
-    python main.py matches upcoming
-    python main.py team 6667
+Direct usage example:
+  import asyncio
+  from src.client import HLTVClient
 
-    # API mode
-    python main.py serve
+  async def main():
+      async with HLTVClient(mode="stealth") as client:
+          html = await client.get("https://www.hltv.org/matches")
+          print(f"Fetched {len(html)} bytes")
+
+  asyncio.run(main())
 """
 
 from __future__ import annotations
 
+import asyncio
 import sys
 
 
 def main() -> None:
-    """Main entry point: dispatches to CLI or API server.
-
-    If the first argument is "serve", starts the FastAPI server.
-    Otherwise, delegates to the Typer CLI.
-    """
+    """Main entry point: dispatches to demo, CLI, or API server."""
     if len(sys.argv) > 1 and sys.argv[1] == "serve":
         _run_server()
+    elif len(sys.argv) > 1 and sys.argv[1] == "demo":
+        asyncio.run(_run_demo())
     else:
         _run_cli()
+
+
+async def _run_demo() -> None:
+    """Quick demo: fetch a matches page and print stats."""
+    from src.client import HLTVClient
+    from src.settings import load_settings
+
+    settings = load_settings()
+    print(f"HLTV Scraper v6.0 — mode={settings.mode}")
+    print(f"Profiles: {settings.profile.count}, "
+          f"Rate: {settings.rate_limit.requests_per_hour}/h, "
+          f"{settings.rate_limit.requests_per_day}/day")
+    print()
+
+    async with HLTVClient(settings=settings) as client:
+        print("Fetching https://www.hltv.org/matches ...")
+        html = await client.get("https://www.hltv.org/matches")
+        print(f"  OK — {len(html):,} bytes received")
+
+        # Show stats
+        stats = client.get_stats()
+        print()
+        print("Client stats:")
+        for key, val in stats.items():
+            print(f"  {key}: {val}")
+
+        # Cookie bridge status
+        if client.cookie_bridge:
+            cf = client.cookie_bridge.get_cf_clearance()
+            print(f"  cf_clearance: {'present' if cf else 'none'}")
+
+        if client.profiles:
+            print(f"  active profile: {client.profiles.current.name if client.profiles.current else 'none'}")
 
 
 def _run_cli() -> None:
@@ -40,16 +78,12 @@ def _run_server() -> None:
     import uvicorn
     from api import app
 
-    host = "0.0.0.0"
-    port = 8000
-
-    # Allow overriding via environment
     import os
-    host = os.environ.get("HLTV_HOST", host)
-    port = int(os.environ.get("HLTV_PORT", str(port)))
+    host = os.environ.get("HLTV_HOST", "0.0.0.0")
+    port = int(os.environ.get("HLTV_PORT", "8000"))
 
     print(f"Starting HLTV Scraper API at http://{host}:{port}")
-    print("Docs available at http://{0}:{1}/docs".format(host, port))
+    print(f"Docs at http://{host}:{port}/docs")
     uvicorn.run(app, host=host, port=port)
 
 

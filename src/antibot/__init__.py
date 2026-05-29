@@ -1,15 +1,7 @@
-"""Anti-bot and anti-detection modules for single-IP Cloudflare bypass."""
+"""Anti-detection modules."""
 
-from .rate_limiter import AdaptiveRateLimiter
 from .block_detector import BlockDetector
-from .human_pattern import HumanRequestPattern
-from .header_profiles import (
-    HeaderProfile,
-    HEADER_PROFILES,
-    random_profile,
-    random_referer,
-    random_accept_language,
-)
+from .fatigue_tracker import FatigueTracker, FatigueMetrics
 from .fingerprint_spoofer import (
     build_full_stealth_script,
     build_canvas_spoof_script,
@@ -19,16 +11,14 @@ from .fingerprint_spoofer import (
     compute_ja4,
     BROWSER_JA4_SIGNATURES,
 )
+from .header_profiles import HeaderProfile, random_profile, random_referer
+from .human_pattern import HumanRequestPattern
+from .rate_limiter import AdaptiveRateLimiter
 
 __all__ = [
-    "AdaptiveRateLimiter",
     "BlockDetector",
-    "HumanRequestPattern",
-    "HeaderProfile",
-    "HEADER_PROFILES",
-    "random_profile",
-    "random_referer",
-    "random_accept_language",
+    "FatigueTracker",
+    "FatigueMetrics",
     "build_full_stealth_script",
     "build_canvas_spoof_script",
     "build_webgl_spoof_script",
@@ -36,4 +26,9 @@ __all__ = [
     "build_navigator_spoof_script",
     "compute_ja4",
     "BROWSER_JA4_SIGNATURES",
+    "HeaderProfile",
+    "random_profile",
+    "random_referer",
+    "HumanRequestPattern",
+    "AdaptiveRateLimiter",
 ]

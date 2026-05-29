@@ -1,49 +1,92 @@
-# ═══════════════════════════════════════════════════════════════════
-# HLTV Scraper Configuration
-# ═══════════════════════════════════════════════════════════════════
-# Copy this file to config.yaml and modify as needed.
-# All values have sensible defaults — this file is optional.
-# ═══════════════════════════════════════════════════════════════════
+# HLTV Scraper Configuration (v6.1)
+# Copy to config.yaml and modify as needed.
 
-# ── Base ────────────────────────────────────────────────────────────
 base_url: "https://www.hltv.org"
-# user_agent: "Mozilla/5.0 (...) Chrome/124.0.0.0 Safari/537.36"
 
-# ── Client Mode ─────────────────────────────────────────────────────
-# "light"    = httpx/curl_cffi only — fastest, no browser overhead
-# "stealth"  = auto-escalate to Playwright when Cloudflare detected
-# "nodriver" = drive system Chrome with Nodriver — best anti-detection (requires Chrome)
+# ── Client Mode ──
+# "stealth" = Nodriver (system Chrome, CDP deep armor, profile rotation)
+# "light"   = curl_cffi only (fast, needs stealth bootstrap for cf_clearance)
 client:
-  mode: "light"               # light | stealth | nodriver
-  timeout: 30                 # Request timeout in seconds
-  max_retries: 3              # Max retry attempts
-  retry_delay: 1.0            # Base retry delay (seconds)
-  retry_backoff: 2.0          # Exponential backoff multiplier
-  user_agent_rotation: true   # Rotate User-Agent headers
-  referer_rotation: true      # Set realistic Referer headers
-  curl_impersonate: true      # Use curl_cffi for TLS fingerprinting
-  curl_impersonate_version: "chrome124"  # Browser to impersonate
-  max_concurrency: 5           # Max concurrent requests (set 2 for low-resource)
-  # proxy: "http://user:pass@host:port"  # Optional proxy (also reads HTTPS_PROXY env)
+  mode: "stealth"              # stealth | light
+  timeout: 30
+  max_retries: 3
+  retry_delay: 1.0
+  retry_backoff: 2.0
+  user_agent_rotation: true
+  referer_rotation: true
+  curl_impersonate: true
+  curl_impersonate_version: "chrome131"
+  max_concurrency: 5
 
-# ── Rate Limiting ───────────────────────────────────────────────────
+# ── Profile Management ──
+# 3-5 profiles with independent Chrome user_data_dir under ~/.hltv_profiles/
+profile:
+  count: 3                     # 3-5 recommended for single IP
+  base_dir: ""                 # Default: ~/.hltv_profiles/
+  rotate_interval: 300         # Seconds between rotations
+  max_requests_per_profile: 500
+  max_lifetime_hours: 72       # Profiles older than this get retired
+  health_threshold_low: 0.3    # Below this = unhealthy
+  health_threshold_good: 0.7   # Above this = preferred
+  evolution_interval: 600      # Seconds between fingerprint micro-evolutions
+  evolution_degree: 0.02       # How much to evolve (0.0-0.1)
+
+# ── Stealth (Nodriver) ──
+stealth:
+  headless: true
+  chrome_path: ""              # Auto-detect if empty
+  window_width: 1920
+  window_height: 1080
+  cdp_minimization: true
+  cdp_deep_armor: true         # Comprehensive CDP domain blocking
+  fingerprint_fixation: true   # Same profile = same fingerprint forever
+  max_pages: 5
+  idle_timeout: 300            # Close browser after idle (seconds)
+  page_timeout: 30
+  cf_wait_timeout: 30
+
+# ── Light (curl_cffi) ──
+light:
+  impersonate: "chrome131"
+  timeout: 30
+  max_retries: 3
+  retry_delay: 2.0
+  align_with_profile: true     # Match UA/headers to active profile
+  etag_cache: true             # If-None-Match for incremental updates
+  etag_cache_size: 500
+
+# ── Behavior Simulation ──
+behavior:
+  min_delay: 2.0
+  max_delay: 8.0
+  scroll_probability: 0.3
+  scroll_pixels_min: 200
+  scroll_pixels_max: 600
+  mouse_move_count: 2
+  mouse_curve_points: 5        # Bezier curve fidelity
+  dwell_listing_min: 2.0
+  dwell_listing_max: 5.0
+  dwell_detail_min: 6.0
+  dwell_detail_max: 15.0
+  warmup_enabled: true
+  browse_trajectory: true      # Simulate home -> listing -> detail path
+  interaction_probability: 0.05 # Light interactions (hover, etc.)
+
+# ── Rate Limiting ──
 rate_limit:
-  enabled: true
-  min_delay: 1.5              # Minimum delay between requests (seconds, gaussian center)
-  max_delay: 3.0              # Maximum delay between requests (seconds)
-  jitter: true                # Add gaussian randomness to delays
-  requests_per_hour: 1000     # Hard cap: max requests per hour
-  requests_per_day: 5000      # Hard cap: max requests per day
+  min_delay: 2.0
+  max_delay: 10.0
+  requests_per_hour: 80
+  requests_per_day: 1500       # Target: 1500-2200
+  jitter: true
+  cooldown_after_blocks: 3
+  cooldown_minutes: 5.0
+  adaptive_enabled: true       # Fatigue-based delay scaling
+  hibernation_enabled: true    # Auto-sleep 8-14h after daily quota
+  hibernation_hours_min: 8.0
+  hibernation_hours_max: 14.0
 
-# ── Cache ───────────────────────────────────────────────────────────
-cache:
-  backend: "diskcache"        # diskcache | redis | none
-  ttl: 300                    # Default TTL in seconds (5 min)
-  diskcache_dir: ".cache/hltv"
-  # redis_url: "redis://localhost:6379/0"
-
-# ── Logging ─────────────────────────────────────────────────────────
+# ── Logging ──
 logging:
-  level: "INFO"               # DEBUG | INFO | WARNING | ERROR
-  format: "plain"             # plain | json
-  # file: "hltv-scraper.log"  # Optional log file path
+  level: "INFO"
+  format: "plain"

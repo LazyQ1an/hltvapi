@@ -40,12 +40,12 @@ except ImportError:
     pass
 
 from src.client import HLTVClient
-from src.config import HLTVConfig
+from src.settings import HLTVSettings, load_settings
 from src.utils.logger import get_logger, setup_logger
 
 # --- Application state ---
 
-config: HLTVConfig | None = None
+config: HLTVSettings | None = None
 client: HLTVClient | None = None
 _scheduler: Any | None = None
 logger = get_logger("api")
@@ -64,9 +64,9 @@ if _HAS_PROMETHEUS:
 async def lifespan(app: FastAPI) -> Any:
     """Application lifespan: initialize and clean up."""
     global client, config, _scheduler
-    config = HLTVConfig.load()
+    config = load_settings()
     setup_logger(config.logging)
-    client = HLTVClient(config)
+    client = HLTVClient(settings=config)
 
     # Start scheduler if enabled
     try:
@@ -205,7 +205,7 @@ async def health() -> dict[str, Any]:
 
     return {
         "status": status,
-        "mode": cl.config.client.mode,
+        "mode": cl.config.mode,
         "cache": cl.config.cache.backend,
         "transports": {
             "curl_available": has_curl,
@@ -279,13 +279,13 @@ async def monitoring() -> dict[str, Any]:
         "rate_limiter": limiter_stats,
         "parse_stats": parse_stats,
         "config": {
-            "mode": cl.config.client.mode,
+            "mode": cl.config.mode,
             "min_delay": cl.config.rate_limit.min_delay,
             "max_delay": cl.config.rate_limit.max_delay,
             "hourly_limit": cl.config.rate_limit.requests_per_hour,
             "daily_limit": cl.config.rate_limit.requests_per_day,
             "cache_backend": cl.config.cache.backend,
-            "curl_impersonate": cl.config.client.curl_impersonate,
+            "curl_impersonate": cl.config.light.impersonate,
         },
     }
 
