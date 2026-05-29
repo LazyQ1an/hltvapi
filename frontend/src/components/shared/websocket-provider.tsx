@@ -33,8 +33,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     if (!mountedRef.current) return;
 
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const wsPort = process.env.NEXT_PUBLIC_WS_PORT || "8000";
-    const url = `${proto}//${location.hostname}:${wsPort}/ws`;
+    const url = `${proto}//${location.host}/api/ws`;
 
     let ws: WebSocket;
     try {

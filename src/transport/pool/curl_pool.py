@@ -119,20 +119,36 @@ class CurlSessionPool:
         self._cleanup()
 
     def _cleanup(self) -> None:
-        """回收过期 session，创建替代。"""
-        new_sessions = []
+        new_sessions: list[TransportSession] = []
         for s in self.sessions:
             if s.is_expired and s.health_score < 0.3:
                 new_s = self._create_session()
+                self._init_client_sync(new_s)
                 new_sessions.append(new_s)
             else:
                 new_sessions.append(s)
 
-        # 补充不足的数量
         while len(new_sessions) < self.size:
-            new_sessions.append(self._create_session())
+            new_s = self._create_session()
+            self._init_client_sync(new_s)
+            new_sessions.append(new_s)
 
         self.sessions = new_sessions
+
+    def _init_client_sync(self, session: TransportSession) -> None:
+        try:
+            from curl_cffi import requests as curl_requests
+
+            proxy_url = self._resolve_proxy()
+            session_kw: dict[str, Any] = {
+                "impersonate": session.identity.impersonate_version,
+                "timeout": (self._config.client.timeout if self._config else 30),
+            }
+            if proxy_url:
+                session_kw["proxies"] = {"https": proxy_url, "http": proxy_url}
+            session.client = curl_requests.AsyncSession(**session_kw)
+        except ImportError:
+            session.health_score = 0.0
 
     def has_available(self) -> bool:
         if not self._initialized:

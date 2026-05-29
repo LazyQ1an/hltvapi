@@ -15,23 +15,23 @@ logger = logging.getLogger("hltv.transport.session_pool")
 
 class SessionPool:
     """
-    多 session 管理池。
+    Multi-session pool manager.
 
-    核心职责：
-    1. 维护多个 TransportSession，每个有独立指纹 + cookie
-    2. 按 health_score 选择最优 session
-    3. 自动创建新 session，回收死亡/过期 session
-    4. 被封 session 隔离，不影响其他 session
+    Core responsibilities:
+    1. Maintain multiple TransportSessions, each with independent fingerprint + cookies
+    2. Select best session by health_score
+    3. Auto-create new sessions, recycle dead/expired ones
+    4. Banned sessions isolated; don't affect other sessions
 
-    架构：
-    - curl 池：10-15 个 session，各独立 fingerprint
-    - httpx 池：3-5 个 session（备用）
-    - Playwright 池：2 个 context（核选项）
+    Architecture:
+    - curl pool: 10-15 sessions, each with independent TLS fingerprint
+    - httpx pool: 3-5 sessions (fallback)
+    - Playwright pool: 1-2 contexts (optional, stealth)
 
-    选择策略：
-    - 每次从池中选出 health_score 最高的 session
-    - 加入随机噪声防止饥饿
-    - 连续失败 3 次 → ban → 5min 后 unban
+    Selection strategy:
+    - Pick highest health_score session from pool each time
+    - Add random noise to prevent starvation
+    - 3 consecutive failures -> ban -> 5min unban
     """
 
     def __init__(
@@ -44,7 +44,7 @@ class SessionPool:
         self._config = config
         self._fingerprint_mgr = TLSFingerprintManager()
 
-        # 具体的传输层池
+        # Transport-specific pools
         self._curl_pool = CurlSessionPool(
             size=curl_count,
             fingerprint_mgr=self._fingerprint_mgr,
@@ -67,16 +67,16 @@ class SessionPool:
         transport: Literal["curl", "httpx", "playwright"] = "curl",
     ) -> TransportSession:
         """
-        获取一个 transport session。
+        Acquire a transport session.
 
         Args:
-            transport: 传输层类型。
+            transport: Transport layer type.
 
         Returns:
-            health_score 最高的 session。
+            Highest health_score session.
 
         Raises:
-            RuntimeError: 如果所有 session 都不可用。
+            RuntimeError: If no sessions are available.
         """
         pool = self._get_pool(transport)
         session = await pool.acquire()
@@ -87,14 +87,93 @@ class SessionPool:
         return session
 
     def release(self, session_id: str, success: bool = True) -> None:
-        """释放一个 session（由 FetchPipeline 调用）。"""
+        """Release a session (called by FetchPipeline)."""
         for pool in self._pools:
             pool.release(session_id, success)
 
+    _SAFE_SHARE_COOKIES = {"cf_clearance", "CookieConsent"}
+
+    def share_cookies(self, cookies: dict[str, str], source_transport: str = "playwright") -> None:
+        """Share safe cookies from one transport to others (e.g. cf_clearance from PW to curl)."""
+        safe_cookies = {
+            k: v for k, v in cookies.items()
+            if k in self._SAFE_SHARE_COOKIES
+        }
+        if not safe_cookies:
+            return
+        for pool in self._pools:
+            for s in pool.sessions:
+                if s.transport != source_transport:
+                    s.cookie_jar.update(safe_cookies)
+
     async def close(self) -> None:
-        """关闭所有传输层连接。"""
+        """Close all transport connections."""
         for pool in self._pools:
             await pool.close()
+
+    async def warmup(self) -> dict[str, Any]:
+        """
+        Warm up the Playwright pool: resolve CF challenge upfront and harvest cookies.
+
+        Called at system startup to avoid first-request CF challenge latency.
+        """
+        result: dict[str, Any] = {"playwright_initialized": False, "cf_clearance": False}
+
+        try:
+            session = await self._playwright_pool.acquire()
+            if session is None:
+                return result
+
+            result["playwright_initialized"] = True
+            context = session.client
+            page = await context.new_page()
+
+            stealth = """
+                Object.defineProperties(navigator, {
+                    webdriver: { get: () => false },
+                    plugins: { get: () => [1, 2, 3, 4, 5] },
+                    languages: { get: () => ['en-US', 'en'] },
+                });
+                window.chrome = { runtime: {} };
+            """
+            await page.add_init_script(stealth)
+
+            try:
+                await page.goto("https://www.hltv.org/", wait_until="domcontentloaded", timeout=60000)
+            except Exception:
+                pass
+
+            for _ in range(30):
+                content = await page.content()
+                content_lower = content.lower()
+                has_hltv = any(
+                    marker.lower() in content_lower
+                    for marker in ["hltv", "nav-bar", "standard-box", "topnav"]
+                )
+                if has_hltv:
+                    break
+                await asyncio.sleep(1.0)
+
+            try:
+                cookies = await context.cookies("https://www.hltv.org")
+                for c in cookies:
+                    session.cookie_jar[c["name"]] = c["value"]
+                    if c["name"] == "cf_clearance":
+                        result["cf_clearance"] = True
+            except Exception:
+                pass
+
+            await page.close()
+            self._playwright_pool.release(session.id, success=True)
+
+            if session.cookie_jar:
+                self.share_cookies(session.cookie_jar, "playwright")
+
+            logger.info("Playwright warmup complete: cf_clearance=%s", result["cf_clearance"])
+        except Exception as e:
+            logger.warning("Playwright warmup failed: %s", e)
+
+        return result
 
     @property
     def _pools(self) -> list:
@@ -111,22 +190,25 @@ class SessionPool:
 
     def best_transport(self, url: str, stealth_mode: bool = False) -> str:
         """
-        确定最佳传输层。
+        Determine the best transport layer for a request.
 
-        策略：
-        1. 如果有 curl session 可用且未被 ban → curl
-        2. 如果 curl 全 ban 了 → httpx
-        3. 如果是 stealth mode 且需要 → playwright
-        4. 从 playwright 降级下来时尝试 curl
+        Strategy:
+        1. If curl has available sessions and isn't banned -> curl (fastest)
+        2. If curl is all banned -> httpx
+        3. If stealth mode and nothing available -> playwright
+        4. When coming back down from playwright, try curl first
+
+        Note: has_available() returns True before pool init (optimistic),
+        so we check actual availability via available_count() when init is done.
         """
-        curl_ok = self._curl_pool.has_available()
-        httpx_ok = self._httpx_pool.has_available()
+        curl_has = self._curl_pool.has_available()
+        httpx_has = self._httpx_pool.has_available()
 
-        if stealth_mode and not curl_ok and not httpx_ok:
+        if stealth_mode and not curl_has and not httpx_has:
             return "playwright"
-        if curl_ok:
+        if curl_has:
             return "curl"
-        if httpx_ok:
+        if httpx_has:
             return "httpx"
         return "playwright"
 
@@ -141,7 +223,7 @@ class SessionPool:
             "httpx": {
                 "total": self._httpx_pool.size,
                 "available": self._httpx_pool.available_count(),
-                "banned": self._httpx_pool.banned_count(),
+                "banned": getattr(self._httpx_pool, "banned_count", lambda: 0)(),
                 "sessions": [s.to_dict() for s in self._httpx_pool.sessions],
             },
             "playwright": {

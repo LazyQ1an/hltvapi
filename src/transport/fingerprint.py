@@ -14,11 +14,12 @@ class TLSFingerprintManager:
     # curl_cffi 支持的 impersonate 版本
     _SUPPORTED_VERSIONS = [
         "chrome124",
-        "chrome127",
-        "chrome129",
         "chrome131",
-        "safari17_5",
-        "firefox136",
+        "chrome136",
+        "edge101",
+        "safari18_0",
+        "firefox133",
+        "firefox135",
     ]
 
     def __init__(self) -> None:

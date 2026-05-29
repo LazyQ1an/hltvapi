@@ -4,8 +4,8 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "hltv-api"
-version = "4.1.0"
-description = "Async-first, anti-bot CS2 data API for HLTV.org"
+version = "5.0.0"
+description = "Single-IP Cloudflare bypass CS2 data API for HLTV.org"
 requires-python = ">=3.11"
 
 [tool.ruff]

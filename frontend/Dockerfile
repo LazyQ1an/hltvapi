@@ -1,36 +1,34 @@
-# v4.1: Frontend Docker — Multi-stage Next.js build
-# Target: minimal runtime image
-# ─────────────────────────────────────────────────────────────────
 
-# ── Stage 1: Builder ────────────────────────────────────────
+# Frontend Dockerfile — Next.js 15 standalone
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm install --frozen-lockfile 2>/dev/null || npm install
 
 COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
+
 RUN npm run build
 
-# ── Stage 2: Runtime ────────────────────────────────────────
-FROM node:20-alpine AS runtime
-
-LABEL org.opencontainers.image.title="HLTV Pro Dashboard v4.1"
-LABEL org.opencontainers.image.description="Next.js dashboard for HLTV Pro API"
-LABEL org.opencontainers.image.version="4.1.0"
+FROM node:20-alpine AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
 
 EXPOSE 3000
+
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]

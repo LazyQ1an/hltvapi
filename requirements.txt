@@ -1,4 +1,4 @@
-# HLTV API v4.1 - Professional & Production Dependencies
+# HLTV API v5.0 - Single-IP Cloudflare Bypass
 # ============================================================
 
 # -- Core ------------------------------------
@@ -10,7 +10,7 @@ pyyaml>=6.0
 httpx[http2]>=0.27,<1.0
 h2>=4.1,<5.0
 curl-cffi>=0.6,<1.0
-# playwright is optional — install only if stealth mode is needed
+# playwright is optional -- install only if stealth mode is needed
 # pip install playwright && playwright install chromium
 
 # -- HTML Parsing ----------------------------
@@ -58,4 +58,3 @@ babel>=2.14,<3.0
 # -- Test ------------------------------------
 pytest>=8.0,<9.0
 pytest-asyncio>=0.23,<1.0
-httpx>=0.27,<1.0

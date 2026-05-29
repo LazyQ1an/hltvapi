@@ -130,15 +130,52 @@ class HttpxSessionPool:
         self._cleanup()
 
     def _cleanup(self) -> None:
-        new_sessions = []
+        new_sessions: list[TransportSession] = []
         for s in self.sessions:
             if s.is_expired and s.health_score < 0.3:
-                new_sessions.append(self._create_session())
+                new_s = self._create_session()
+                self._init_client_sync(new_s)
+                new_sessions.append(new_s)
             else:
                 new_sessions.append(s)
         while len(new_sessions) < self.size:
-            new_sessions.append(self._create_session())
+            new_s = self._create_session()
+            self._init_client_sync(new_s)
+            new_sessions.append(new_s)
         self.sessions = new_sessions
+
+    def _init_client_sync(self, session: TransportSession) -> None:
+        try:
+            import httpx
+
+            proxy_url = self._resolve_proxy()
+            limits = httpx.Limits(
+                max_keepalive_connections=10,
+                max_connections=50,
+                keepalive_expiry=5.0,
+            )
+
+            http2 = False
+            try:
+                import h2  # noqa: F401
+                http2 = True
+            except ImportError:
+                pass
+
+            transport_kw: dict[str, Any] = {"limits": limits}
+            if proxy_url:
+                transport_kw["proxy"] = proxy_url
+
+            session.client = httpx.AsyncClient(
+                timeout=httpx.Timeout(
+                    self._config.client.timeout if self._config else 30,
+                ),
+                follow_redirects=True,
+                http2=http2,
+                **transport_kw,
+            )
+        except ImportError:
+            session.health_score = 0.0
 
     def has_available(self) -> bool:
         if not self._initialized:

@@ -1,6 +1,68 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Cache dirs
+.cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+!.env.example
+config.yaml
+config.yml
+
+# Logs and data
+logs/
+*.log
+*.sqlite
+hltv_data.*
+backups/
+demos/
+
+# Scratch and debug scripts
+_debug_*.py
+_test_*.py
+_analyze_*.py
+_deep_*.py
+_check_*.py
+scripts/scratch/
+test_output.txt
+fix_frontend.ps1
+
+# Frontend
+frontend/.next/
+frontend/node_modules/
+frontend/out/
+__pycache__/
+*.py[cod]
 *.egg-info/
 dist/
 build/

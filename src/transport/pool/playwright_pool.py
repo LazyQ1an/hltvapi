@@ -12,16 +12,16 @@ logger = logging.getLogger("hltv.transport.playwright_pool")
 
 class PlaywrightContextPool:
     """
-    Playwright BrowserContext 池。
+    Playwright BrowserContext pool.
 
-    与 curl/httpx 不同，Playwright 使用 BrowserContext 作为"session"。
-    每个 context 有独立的 storage state (cookies, localStorage)。
+    Unlike curl/httpx, Playwright uses BrowserContext as the "session" unit.
+    Each context has independent storage state (cookies, localStorage).
 
-    升级点（相对于旧版每次新建 context）：
-    1. 持久化 context，复用降低启动开销 (~500ms → ~50ms)
-    2. 模拟真人 browsing：定时访问首页、滚动
-    3. 定时重建（30min）防止 memory leak
-    4. 高级 stealth init script
+    Key improvements over the old create-per-request approach:
+    1. Persistent contexts: reused across requests (~50ms vs ~500ms startup)
+    2. Realistic browsing simulation: periodic home page visits, scrolling
+    3. Timed rebuild (10min) to prevent memory leaks
+    4. Advanced stealth init scripts with GPU/WebGL spoofing
     """
 
     def __init__(
@@ -43,15 +43,39 @@ class PlaywrightContextPool:
             from playwright.async_api import async_playwright
 
             self._playwright = await async_playwright().start()
+
+            # Determine headless mode: default True unless explicitly set to false
+            headless = True
+            import os
+            pw_env = os.environ.get("HLTV_PLAYWRIGHT_HEADLESS", "true").lower()
+            if pw_env in ("false", "0", "no"):
+                headless = False
+
+            # Proxy support for Playwright
+            proxy_config: dict[str, str] | None = None
+            proxy_url = self._resolve_proxy()
+            if proxy_url:
+                proxy_config = {"server": proxy_url}
+
             self._browser = await self._playwright.chromium.launch(
-                headless=True,
+                headless=headless,
                 args=[
                     "--no-sandbox",
                     "--disable-blink-features=AutomationControlled",
-                    "--disable-web-security",
-                    "--disable-features=IsolateOrigins,site-per-process",
-                    "--disable-features=BlockInsecurePrivateNetworkRequests",
+                    "--disable-dev-shm-usage",
+                    "--disable-infobars",
+                    "--disable-background-timer-throttling",
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding",
+                    "--disable-component-update",
+                    "--disable-default-apps",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    "--password-store=basic",
+                    "--use-mock-keychain",
+                    "--window-size=1920,1080",
                 ],
+                proxy=proxy_config,
             )
 
             for _ in range(self.size):
@@ -67,15 +91,49 @@ class PlaywrightContextPool:
         session = TransportSession(transport="playwright", identity=identity)
 
         if self._browser:
-            context = await self._browser.new_context(
-                user_agent=identity.user_agent,
-                viewport={"width": identity.viewport_width, "height": identity.viewport_height},
-                locale=identity.locale,
-                timezone_id=identity.timezone,
-            )
+            extra_headers: dict[str, str] = {
+                "Accept-Language": identity.accept_language,
+            }
+            if identity.browser_type in ("chrome", "edge"):
+                extra_headers.update({
+                    "Sec-Ch-Ua": identity.sec_ch_ua,
+                    "Sec-Ch-Ua-Mobile": identity.sec_ch_ua_mobile,
+                    "Sec-Ch-Ua-Platform": identity.sec_ch_ua_platform,
+                })
+
+            # Resolve proxy for context as well
+            proxy_url = self._resolve_proxy()
+            context_kwargs: dict[str, Any] = {
+                "user_agent": identity.user_agent,
+                "viewport": {"width": identity.viewport_width, "height": identity.viewport_height},
+                "locale": identity.locale,
+                "timezone_id": identity.timezone,
+                "device_scale_factor": random.choice([1.0, 1.25, 1.5, 2.0]),
+                "has_touch": False,
+                "java_script_enabled": True,
+                "ignore_https_errors": True,
+                "extra_http_headers": extra_headers,
+            }
+            if proxy_url:
+                context_kwargs["proxy"] = {"server": proxy_url}
+
+            context = await self._browser.new_context(**context_kwargs)
             session.client = context
 
         return session
+
+    def _resolve_proxy(self) -> str | None:
+        try:
+            if self._config and hasattr(self._config, "proxy"):
+                return str(self._config.proxy) if self._config.proxy else None
+        except Exception:
+            pass
+        import os
+        for env_var in ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"]:
+            val = os.environ.get(env_var)
+            if val:
+                return val
+        return None
 
     async def acquire(self) -> TransportSession | None:
         await self._ensure_init()
@@ -86,7 +144,7 @@ class PlaywrightContextPool:
         if not candidates:
             return None
 
-        # Round-robin 选择
+        # Round-robin selection
         selected = candidates[0]
         self.sessions.remove(selected)
         self.sessions.append(selected)

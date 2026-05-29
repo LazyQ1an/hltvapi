@@ -110,7 +110,9 @@ def upcoming() -> None:
     """Fetch upcoming matches."""
     from src.endpoints.matches import MatchesEndpoint
     client = _get_client()
+    typer.echo("Fetching upcoming matches...", err=True)
     matches = asyncio.run(MatchesEndpoint(client).get_upcoming())
+    typer.echo(f"Found {len(matches) if isinstance(matches, list) else 1} match(es)", err=True)
     _output(matches, _output_format)
 
 
@@ -123,6 +125,7 @@ def results(
     """Fetch historical match results."""
     from src.endpoints.results import ResultsEndpoint
     client = _get_client()
+    typer.echo(f"Fetching results (page {page})...", err=True)
     matches = asyncio.run(
         ResultsEndpoint(client).get_results(
             page=page,
@@ -140,6 +143,7 @@ def match(
     """Fetch detailed match information."""
     from src.endpoints.matches import MatchesEndpoint
     client = _get_client()
+    typer.echo(f"Fetching match {match_id}...", err=True)
     detail = asyncio.run(MatchesEndpoint(client).get_detail(match_id))
     _output(detail, _output_format)
 
@@ -152,6 +156,7 @@ def ranking() -> None:
     """Fetch world team ranking."""
     from src.endpoints.teams import TeamsEndpoint
     client = _get_client()
+    typer.echo("Fetching team ranking...", err=True)
     rank = asyncio.run(TeamsEndpoint(client).get_ranking())
     _output(rank, _output_format)
 

@@ -81,7 +81,11 @@ class TieredCache:
             self._l2[key] = value
 
         if self._l3 is not None:
-            self._l3.set(key, value, ttl=ttl)
+            try:
+                self._l3.set(key, value, ttl=ttl)
+            except TypeError:
+                expire = ttl if ttl else None
+                self._l3.set(key, value, expire=expire)
 
     def _promote_to_l1(self, key: str, value: Any) -> None:
         self._l1[key] = value

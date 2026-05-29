@@ -43,14 +43,14 @@ from src.client import HLTVClient
 from src.config import HLTVConfig
 from src.utils.logger import get_logger, setup_logger
 
-# ── Application state ───────────────────────────────────────────────
+# --- Application state ---
 
 config: HLTVConfig | None = None
 client: HLTVClient | None = None
 _scheduler: Any | None = None
 logger = get_logger("api")
 
-# ── Prometheus metrics (optional) ────────────────────────────────────
+# --- Prometheus metrics (optional) ---
 
 if _HAS_PROMETHEUS:
     REQUEST_COUNT = Counter("hltv_requests_total", "Total HTTP requests", ["endpoint", "status"])
@@ -93,19 +93,39 @@ async def lifespan(app: FastAPI) -> Any:
 
 app = FastAPI(
     title="HLTV Pro API",
-    description="Professional CS2 data API for HLTV.org — v4.0",
-    version="4.0.0",
+    description="Professional CS2 data API for HLTV.org -- v5.0",
+    version="5.0.0",
     lifespan=lifespan,
 )
 
-# v4.0: Security middleware
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> dict:
+    import logging
+    _logger = logging.getLogger("hltv.api")
+    _logger.error("Unhandled exception: %s: %s", type(exc).__name__, exc)
+    from fastapi.responses import JSONResponse
+    status_code = 500
+    error_type = "internal_error"
+    if hasattr(exc, "status_code"):
+        status_code = exc.status_code
+    if isinstance(exc, HTTPException):
+        status_code = exc.status_code
+        error_type = "http_error"
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": {"code": status_code, "message": str(exc.detail) if hasattr(exc, 'detail') else str(exc), "type": error_type}},
+    )
+
+
+# Security middleware
 app.add_middleware(SecurityHeadersMiddleware)
 
-# CORS for frontend — restrict in production
+# CORS for frontend -- restrict in production
 import os
 _cors_origins = os.environ.get(
     "HLTV_CORS_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000"
+    "http://localhost:3000,http://127.0.0.1:3000,http://154.202.119.182:3000"
 ).split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -128,8 +148,7 @@ def _get_client() -> HLTVClient:
     return client
 
 
-# ── Prometheus middleware (optional) ─────────────────────────────────
-
+# --- Prometheus middleware (optional) ---
 
 if _HAS_PROMETHEUS:
     @app.middleware("http")
@@ -162,27 +181,47 @@ def _serialize(data: Any) -> Any:
     return data
 
 
-# ── Health & Metrics ────────────────────────────────────────────────
-
+# --- Health & Metrics ---
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    """Health check endpoint."""
-    cfg = _get_client().config
+async def health() -> dict[str, Any]:
+    """Health check endpoint with deep status."""
+    cl = _get_client()
+    pool_stats = cl._session_pool.get_stats()
+    limiter_stats = cl._rate_limiter.get_stats()
+    block_pattern = cl._block_detector.get_block_pattern()
+
+    has_curl = pool_stats.get("curl", {}).get("available", 0) > 0
+    has_httpx = pool_stats.get("httpx", {}).get("available", 0) > 0
+    has_any_transport = has_curl or has_httpx
+    in_cooldown = limiter_stats.get("cooldown_active", False)
+    high_risk = block_pattern.get("risk_level") == "high"
+
+    status = "ok"
+    if not has_any_transport:
+        status = "critical"
+    elif in_cooldown or high_risk:
+        status = "degraded"
+
     return {
-        "status": "ok",
-        "mode": cfg.client.mode,
-        "cache": cfg.cache.backend,
+        "status": status,
+        "mode": cl.config.client.mode,
+        "cache": cl.config.cache.backend,
+        "transports": {
+            "curl_available": has_curl,
+            "httpx_available": has_httpx,
+        },
+        "rate_limiter": {
+            "cooldown": in_cooldown,
+            "consecutive_blocks": limiter_stats.get("consecutive_blocks", 0),
+        },
+        "block_risk": block_pattern.get("risk_level", "low"),
     }
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
-    """WebSocket endpoint for real-time monitoring alerts.
-
-    Connect: ws://localhost:8000/ws
-    Receives alert broadcasts from the monitoring system.
-    """
+    """WebSocket endpoint for real-time monitoring alerts."""
     from src.monitor.ws import websocket_endpoint as ws_handler
     await ws_handler(ws)
 
@@ -191,8 +230,6 @@ if _HAS_PROMETHEUS:
     @app.get("/metrics")
     async def metrics() -> Any:
         """Prometheus metrics endpoint."""
-        from fastapi.responses import Response
-
         cl = _get_client()
         limiter = cl._rate_limiter.get_stats()
         RATE_LIMITER_USAGE.labels(type="hourly").set(limiter.get("hourly_used", 0))
@@ -216,18 +253,13 @@ if _HAS_PROMETHEUS:
 @app.get("/monitoring")
 async def monitoring() -> dict[str, Any]:
     """Monitoring metrics endpoint."""
-    import time as tmod
     cl = _get_client()
-    cfg = cl.config
 
-    # Rate limiter stats
     limiter_stats = cl._rate_limiter.get_stats()
 
-    # Parse stats
     from src.utils.parsestats import report_all
     parse_stats = report_all()
 
-    # Determine overall health
     low_ratio_parsers = [
         name for name, s in parse_stats.items()
         if s["total"] > 0 and s["ratio"] < 0.85
@@ -247,19 +279,18 @@ async def monitoring() -> dict[str, Any]:
         "rate_limiter": limiter_stats,
         "parse_stats": parse_stats,
         "config": {
-            "mode": cfg.client.mode,
-            "min_delay": cfg.rate_limit.min_delay,
-            "max_delay": cfg.rate_limit.max_delay,
-            "hourly_limit": cfg.rate_limit.requests_per_hour,
-            "daily_limit": cfg.rate_limit.requests_per_day,
-            "cache_backend": cfg.cache.backend,
-            "curl_impersonate": cfg.client.curl_impersonate,
+            "mode": cl.config.client.mode,
+            "min_delay": cl.config.rate_limit.min_delay,
+            "max_delay": cl.config.rate_limit.max_delay,
+            "hourly_limit": cl.config.rate_limit.requests_per_hour,
+            "daily_limit": cl.config.rate_limit.requests_per_day,
+            "cache_backend": cl.config.cache.backend,
+            "curl_impersonate": cl.config.client.curl_impersonate,
         },
     }
 
 
-# ── Matches ─────────────────────────────────────────────────────────
-
+# --- Matches ---
 
 @app.get("/matches/upcoming")
 async def get_upcoming() -> list[Any]:
@@ -293,8 +324,7 @@ async def get_match(match_id: int) -> Any:
     return _serialize(detail)
 
 
-# ── Teams ───────────────────────────────────────────────────────────
-
+# --- Teams ---
 
 @app.get("/teams/ranking")
 async def get_ranking() -> Any:
@@ -328,8 +358,7 @@ async def get_team_matches(team_id: int) -> list[Any]:
     return _serialize(matches)
 
 
-# ── Players ─────────────────────────────────────────────────────────
-
+# --- Players ---
 
 @app.get("/players/{player_id}")
 async def get_player(player_id: int) -> Any:
@@ -357,8 +386,7 @@ async def get_player_map_stats(player_id: int) -> list[Any]:
     return _serialize(stats)
 
 
-# ── Events ──────────────────────────────────────────────────────────
-
+# --- Events ---
 
 @app.get("/events")
 async def get_events(
@@ -379,8 +407,7 @@ async def get_event(event_id: int) -> Any:
     return _serialize(detail)
 
 
-# ── News ────────────────────────────────────────────────────────────
-
+# --- News ---
 
 @app.get("/news")
 async def get_news(
@@ -401,8 +428,7 @@ async def get_news_detail(article_id: int) -> Any:
     return _serialize(detail)
 
 
-# ── Search ──────────────────────────────────────────────────────────
-
+# --- Search ---
 
 @app.get("/search")
 async def search(
@@ -414,8 +440,7 @@ async def search(
     return _serialize(results)
 
 
-# ── Stats ───────────────────────────────────────────────────────────
-
+# --- Stats ---
 
 @app.get("/stats/team/{team_id}")
 async def get_team_stats(team_id: int) -> dict[str, Any]:
@@ -425,8 +450,7 @@ async def get_team_stats(team_id: int) -> dict[str, Any]:
     return _serialize(stats)
 
 
-# ── Demos ────────────────────────────────────────────────────────────
-
+# --- Demos ---
 
 @app.get("/matches/{match_id}/demos")
 async def get_demos(match_id: int) -> list[Any]:
@@ -436,8 +460,7 @@ async def get_demos(match_id: int) -> list[Any]:
     return _serialize(demos)
 
 
-# ── Cache ───────────────────────────────────────────────────────────
-
+# --- Cache ---
 
 @app.post("/cache/clear")
 async def clear_cache() -> dict[str, str]:
@@ -446,8 +469,7 @@ async def clear_cache() -> dict[str, str]:
     return {"status": "cache cleared"}
 
 
-# ── v4.0: Resource Monitoring ────────────────────────────────────────
-
+# --- Resource Monitoring ---
 
 @app.get("/resources")
 async def get_resources() -> dict:
@@ -455,8 +477,7 @@ async def get_resources() -> dict:
     return get_resource_usage()
 
 
-# ── v4.0: Export Center ──────────────────────────────────────────────
-
+# --- Export Center ---
 
 @app.get("/export/pdf")
 async def export_pdf(
@@ -501,8 +522,7 @@ async def export_excel(
     )
 
 
-# ── v4.0: Data Comparison ────────────────────────────────────────────
-
+# --- Data Comparison ---
 
 @app.get("/comparison/{compare_type}")
 async def compare(
@@ -510,7 +530,10 @@ async def compare(
     ids: str = Query(..., description="Comma-separated IDs, e.g. 6667,4608"),
 ) -> dict:
     """Compare teams or players side by side (2-5 IDs)."""
-    id_list = [int(i.strip()) for i in ids.split(",") if i.strip()]
+    try:
+        id_list = [int(i.strip()) for i in ids.split(",") if i.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="IDs must be integers separated by commas")
     if len(id_list) < 2 or len(id_list) > 5:
         raise HTTPException(
             status_code=400,

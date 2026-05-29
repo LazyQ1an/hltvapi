@@ -138,7 +138,7 @@ class DemosEndpoint:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Download using the client's curl session for speed
-        session = await self._client._get_curl()
+        session = await self._client._get_curl_session()
         if session is None:
             # Fallback to httpx
             import httpx

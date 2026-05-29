@@ -1,4 +1,4 @@
-// ── v4.1: Enhanced CI — lint, typecheck, test, coverage, security
+// ── v5.0: Enhanced CI �?lint, typecheck, test, coverage, security
 name: CI
 
 on:
