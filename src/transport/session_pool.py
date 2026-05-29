@@ -105,6 +105,48 @@ class SessionPool:
             for s in pool.sessions:
                 if s.transport != source_transport:
                     s.cookie_jar.update(safe_cookies)
+    # --- Cookie persistence (disk-backed session jars) ---
+
+    async def save_cookies(self) -> None:
+        """Save all session cookie jars to disk for cross-restart persistence."""
+        import json
+        from pathlib import Path
+        jar_dir = Path(".cache/hltv/session_cookies")
+        jar_dir.mkdir(parents=True, exist_ok=True)
+        for pool in self._pools:
+            for s in pool.sessions:
+                if s.cookie_jar:
+                    fpath = jar_dir / f"{s.id}.json"
+                    payload = {
+                        "transport": s.transport,
+                        "identity_fingerprint": s.identity.impersonate_version,
+                        "cookies": s.cookie_jar,
+                        "saved_at": __import__("time").time(),
+                    }
+                    fpath.write_text(json.dumps(payload, indent=2))
+
+    def load_cookies(self) -> int:
+        """Load previously saved cookie jars. Returns count of loaded sessions."""
+        import json
+        from pathlib import Path
+        jar_dir = Path(".cache/hltv/session_cookies")
+        if not jar_dir.exists():
+            return 0
+        loaded = 0
+        for pool in self._pools:
+            for s in pool.sessions:
+                fpath = jar_dir / f"{s.id}.json"
+                if fpath.exists():
+                    try:
+                        data = json.loads(fpath.read_text())
+                        if data.get("transport") == s.transport:
+                            s.cookie_jar.update(data.get("cookies", {}))
+                            loaded += 1
+                    except Exception:
+                        pass
+        if loaded:
+            logger.info("Loaded %d saved cookie jars", loaded)
+        return loaded
 
     async def close(self) -> None:
         """Close all transport connections."""

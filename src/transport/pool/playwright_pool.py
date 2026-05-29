@@ -5,6 +5,7 @@ import random
 from typing import Any
 
 from ..base import TransportSession
+from ...antibot.fingerprint_spoofer import build_full_stealth_script
 from ..identity import SessionIdentity
 
 logger = logging.getLogger("hltv.transport.playwright_pool")
@@ -119,6 +120,9 @@ class PlaywrightContextPool:
 
             context = await self._browser.new_context(**context_kwargs)
             session.client = context
+
+        # Build and cache deep stealth script for this identity
+        session._stealth_script = build_full_stealth_script(identity)
 
         return session
 
