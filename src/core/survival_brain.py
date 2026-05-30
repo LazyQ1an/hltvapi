@@ -1,5 +1,5 @@
 """
-Adaptive Survival Brain — priority-aware request scheduling for single-IP longevity. v7.0
+Adaptive Survival Brain — priority-aware request scheduling for single-IP longevity. NG1.0
 
 Components:
 1. PriorityQueue — ordered request executor with deadline awareness

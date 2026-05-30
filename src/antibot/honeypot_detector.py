@@ -1,5 +1,5 @@
 """
-Semantic honeypot detector for Cloudflare + HLTV anti-bot patterns. v8.0
+Semantic honeypot detector for Cloudflare + HLTV anti-bot patterns. NG1.0
 
 Cloudflare hides honeypot elements in pages that real users never see
 but crawlers often parse:

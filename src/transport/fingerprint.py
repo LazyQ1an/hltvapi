@@ -4,7 +4,7 @@ Manages a pool of TLS fingerprint versions across curl_cffi's
 impersonate targets. Each session gets an assigned version;
 rotation keeps the load balanced to avoid anomalous patterns.
 
-v5.1: Added JA4 fingerprint tracking and HTTP/2 frame awareness.
+NG1.0: Added JA4 fingerprint tracking and HTTP/2 frame awareness.
 """
 
 from __future__ import annotations

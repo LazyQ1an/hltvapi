@@ -1,7 +1,7 @@
 """
-Human Behavior Engine v2 — per-profile behavior patterns. v7.0
+Human Behavior Engine v2 — per-profile behavior patterns. NG1.0
 
-Upgraded from v6.1 simulator with:
+Upgraded from NG1.0 simulator with:
 - Per-profile behavior profiles (derived from profile seed)
 - Keyboard input simulation (typing speed, key intervals)
 - Tab/window focus change events

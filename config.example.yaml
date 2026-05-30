@@ -1,4 +1,4 @@
-# HLTV Scraper Configuration (v6.1)
+# HLTV Scraper Configuration (NG1.0)
 # Copy to config.yaml and modify as needed.
 
 base_url: "https://www.hltv.org"

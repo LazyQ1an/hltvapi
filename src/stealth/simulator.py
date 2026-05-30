@@ -1,5 +1,5 @@
 """
-Lightweight human behavior simulator for server environments. v6.1
+Lightweight human behavior simulator for server environments. NG1.0
 
 Enhanced with:
 - Browse trajectory simulation (home -> listing -> detail -> back)

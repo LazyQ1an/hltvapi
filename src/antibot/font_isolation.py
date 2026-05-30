@@ -1,5 +1,5 @@
 """
-Font metrics isolation — defend against CF's font-rendering side-channel probes. v9.0
+Font metrics isolation — defend against CF's font-rendering side-channel probes. NG1.0
 
 Cloudflare's advanced scripts create hidden DOM elements, fill them with
 specific unicode characters, then call getBoundingClientRect() or
@@ -79,7 +79,7 @@ _MACOS_FONT_STACK: list[str] = [
 # ---------------------------------------------------------------------------
 
 FONT_METRICS_INTERCEPT_SCRIPT = r"""
-// v9.0: Font metrics side-channel defense
+// NG1.0: Font metrics side-channel defense
 // Intercepts font measurement APIs to return Windows-like values
 // even when running on Linux servers.
 
@@ -182,7 +182,7 @@ FONT_METRICS_INTERCEPT_SCRIPT = r"""
         }
     }
 
-    console.debug('[hltv] v9.0 font metrics isolation active');
+    console.debug('[hltv] NG1.0 font metrics isolation active');
 })();
 """
 
@@ -235,9 +235,9 @@ class FontIsolationManager:
             "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         ]
-        return any(shutil.which("fc-list") is not None for _ in [None]) or any(
-            __import__("os").path.exists(p) for p in font_paths
-        )
+        has_fc = shutil.which("fc-list") is not None
+        has_font = any(__import__("os").path.exists(p) for p in font_paths)
+        return has_fc or has_font
 
     @staticmethod
     def get_linux_setup_guide() -> str:

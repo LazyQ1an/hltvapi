@@ -1,17 +1,17 @@
 """
-HLTV Scraper Settings — single source of truth. v9.0
+HLTV Scraper Settings — single source of truth. NG1.0
 
 All configuration lives here as dataclasses with sensible defaults.
 Environment variables override with HLTV_ prefix.
 
-v8.0 additions:
+NG1.0 additions:
 - Worker injection: CDP injection into all Worker/iframe contexts
 - Behavior v3: MicroPhysicsMouse, CompletePointerEvents, Fitts' Law
 - Honeypot detection: semantic HTML scanning for CF traps
 - TLS persistence: session ticket cache, QUIC upgrade detection
 - Light mode: tls_session_cache, quic_upgrade
 
-v9.0 additions:
+NG1.0 additions:
 - Content-driven timing: DOM text-density-based delays replace random sleeps
 - Purposeless browsing: insert idle-human noise between target pages
 - QUIC transport: Alt-Svc detection + H3 state tracking
@@ -41,11 +41,11 @@ class ProfileSettings:
     health_threshold_good: float = 0.7
     evolution_interval: int = 600
     evolution_degree: float = 0.02
-    # v7.0: Sleep-wake
+    # NG1.0: Sleep-wake
     sleep_after_idle_hours: float = 6.0
     wake_health_threshold: float = 0.5
     wake_cooldown_hours: float = 2.0
-    # v8.0
+    # NG1.0
     use_worker_injection: bool = True
 
     def __post_init__(self) -> None:
@@ -66,19 +66,19 @@ class StealthSettings:
     cdp_minimization: bool = True
     cdp_deep_armor: bool = True
     fingerprint_fixation: bool = True
-    # v7.0
+    # NG1.0
     use_fingerprint_factory: bool = True
     use_behavior_v2: bool = True
-    # v8.0
+    # NG1.0
     use_worker_injection: bool = True
-    # v9.0
+    # NG1.0
     use_font_isolation: bool = True
     max_pages: int = 5
     idle_timeout: int = 300
     page_timeout: int = 30
     cf_wait_timeout: int = 30
     extra_chrome_args: tuple[str, ...] = ()
-    # v7.0: Memory control
+    # NG1.0: Memory control
     max_memory_mb: int = 512
     gc_interval: int = 60
 
@@ -92,13 +92,13 @@ class LightSettings:
     align_with_profile: bool = True
     etag_cache: bool = True
     etag_cache_size: int = 500
-    # v7.0: JA4 sync
+    # NG1.0: JA4 sync
     sync_ja4: bool = True
     sync_header_order: bool = True
-    # v8.0
+    # NG1.0
     tls_session_cache: bool = True
     quic_upgrade: bool = True
-    # v9.0
+    # NG1.0
     cross_mode_bridge: bool = True
     psk_sync: bool = True
 
@@ -120,16 +120,16 @@ class BehaviorSettings:
     warmup_urls: tuple[str, ...] = ("https://www.hltv.org/",)
     browse_trajectory: bool = True
     interaction_probability: float = 0.05
-    # v7.0
+    # NG1.0
     use_v2: bool = True
     per_profile_behavior: bool = True
-    # v8.0
+    # NG1.0
     use_v3: bool = True
     micro_tremor_enabled: bool = True
     micro_tremor_frequency: float = 10.0
     fitts_law_enabled: bool = True
     overshoot_correction: bool = True
-    # v9.0
+    # NG1.0
     content_driven_delay: bool = True
     purposeless_browsing: bool = True
     purposeless_interval_min: int = 3
@@ -149,14 +149,14 @@ class RateLimitSettings:
     hibernation_enabled: bool = True
     hibernation_hours_min: float = 8.0
     hibernation_hours_max: float = 14.0
-    # v7.0
+    # NG1.0
     use_survival_brain: bool = True
     dual_layer_limits: bool = True
     content_change_detection: bool = True
-    # v8.0
+    # NG1.0
     use_honeypot_detector: bool = True
     use_tls_persistence: bool = True
-    # v9.0
+    # NG1.0
     use_cross_cover: bool = True
     use_challenge_response: bool = True
 
@@ -186,7 +186,7 @@ class HLTVSettings:
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     cache_dir: str = ".cache/hltv"
-    # v9.0: Process isolation
+    # NG1.0: Process isolation
     process_sandbox_enabled: bool = True
     zombie_reaper_interval: float = 300.0
 

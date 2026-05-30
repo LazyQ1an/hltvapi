@@ -1,5 +1,5 @@
 """
-HTTP/3 (QUIC) transport detection and upgrade tracking. v9.0
+HTTP/3 (QUIC) transport detection and upgrade tracking. NG1.0
 
 Modern browsers visiting CDN-backed sites like HLTV automatically
 upgrade to HTTP/3 after receiving an Alt-Svc header. A single IP that

@@ -1,13 +1,13 @@
 """
-HLTV Client — v9.0 content-driven, cross-cover, process-isolated survival.
+HLTV Client — NG1.0 content-driven, cross-cover, process-isolated survival.
 
-v8.0 additions:
+NG1.0 additions:
 - HoneypotDetector: pre-parse scan before data extraction
 - TLSSessionManager: TLS session persistence for light mode
 - WorkerInjector: CDP-level injection into all targets
 - Behavior v3: micro-physics mouse + complete pointer event chains
 
-v9.0 additions:
+NG1.0 additions:
 - ContentDrivenDelay: DOM text-density-based reading time instead of random sleep
 - PurposelessBrowsingEngine: inject idle-human noise between target pages
 - QUICUpgradeManager: Alt-Svc detection + H3 protocol state tracking
@@ -27,13 +27,14 @@ import time as tmod
 from typing import Any, Literal
 from urllib.parse import urlparse
 
+from src.exceptions import BlockedError
 from src.settings import HLTVSettings, load_settings
 
 logger = logging.getLogger("hltv.client")
 
 
 class HLTVClient:
-    """Main entry point for HLTV scraping v8.0.
+    """Main entry point for HLTV scraping NG1.0.
 
     Public attributes: settings, cookie_bridge, profiles, fatigue, brain, honeypot, tls,
                        content_delay, purposeless, quic, font_iso, cross_cover,
@@ -83,20 +84,20 @@ class HLTVClient:
         from src.antibot.fatigue_tracker import FatigueTracker
         from src.core.survival_brain import SurvivalBrain
         from src.antibot.honeypot_detector import HoneypotDetector
-        from src.antibot.tls_session import TLSSessionManager
-
-        self.cookie_bridge = CookieBridge(self.settings.cache_dir)
-        self.fatigue = FatigueTracker(self.settings)
-        self.brain = SurvivalBrain(self.settings)
-        self.honeypot = HoneypotDetector()
-        self.tls = TLSSessionManager(self.settings.cache_dir)
+        from src.antibot.tls_session import TLSSessionManager, CrossModeSessionBridge
         from src.stealth.content_driven_timing import ContentDrivenDelay
         from src.stealth.purposeless_browser import PurposelessBrowsingEngine
         from src.transport.quic_transport import QUICUpgradeManager
         from src.antibot.font_isolation import FontIsolationManager
         from src.core.profile_cross_cover import CrossCoverStrategy, ChallengeResponseBrain
         from src.core.process_isolation import ProcessSandbox
-        from src.antibot.tls_session import CrossModeSessionBridge
+
+        self.cookie_bridge = CookieBridge(self.settings.cache_dir)
+        self.fatigue = FatigueTracker(self.settings)
+        self.brain = SurvivalBrain(self.settings)
+        self.honeypot = HoneypotDetector()
+        self.tls = TLSSessionManager(self.settings.cache_dir)
+        self.cross_bridge = CrossModeSessionBridge(self.settings.cache_dir)
 
         self.content_delay = ContentDrivenDelay()
         self.purposeless = PurposelessBrowsingEngine(
@@ -108,7 +109,6 @@ class HLTVClient:
         self.cross_cover = CrossCoverStrategy()
         self.challenge_brain = ChallengeResponseBrain()
         self.sandbox = ProcessSandbox()
-        self.cross_bridge = CrossModeSessionBridge(self.settings.cache_dir)
 
         if self.mode == "stealth":
             await self._start_stealth()
@@ -117,7 +117,7 @@ class HLTVClient:
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
         self._started = True
-        logger.info("HLTVClient v9.0 started (mode=%s)", self.mode)
+        logger.info("HLTVClient NG1.0 started (mode=%s)", self.mode)
 
     async def close(self) -> None:
         if self.mode == "stealth" and self._stealth_browser:
@@ -190,13 +190,13 @@ class HLTVClient:
 
         html = await (self._get_stealth(url) if self.mode == "stealth" else self._get_light(url))
 
-        # Honeypot scan (v8.0)
+        # Honeypot scan (NG1.0)
         if self.honeypot and html:
             scan = await self.honeypot.scan(html)
             if scan["threat_level"] in ("high",):
                 logger.warning("Honeypot alert for %s: %s", url, scan["details"])
                 if scan["recommendation"] == "abort_and_sleep":
-                    raise _BlockedError(f"Honeypot detected: {url}")
+                    raise BlockedError(message=f"Honeypot detected: {url}", url=url)
 
         return html
 
@@ -205,11 +205,16 @@ class HLTVClient:
         return json.loads(await self.get(url))
 
     async def get_bytes(self, url: str) -> bytes:
+        if not self._started:
+            raise RuntimeError("Client not started.")
         if self.mode == "light":
-            resp = await self._light_session.get(url)
+            headers = _build_light_headers(url)
+            if self.cookie_bridge:
+                headers = self.cookie_bridge.inject_to_light_headers(headers)
+            resp = await self._light_session.get(url, headers=headers)
+            self._rate_state["last_request"] = tmod.time()
             return resp.content
-        html = await self._get_stealth(url)
-        return html.encode("utf-8")
+        return (await self._get_stealth(url)).encode("utf-8")
 
     async def get_soup(self, url: str, *, parser: str = "html.parser", **kwargs: Any) -> Any:
         html = await self.get(url)
@@ -258,7 +263,7 @@ class HLTVClient:
                         self.cookie_bridge.harvest_from_stealth(cookies)
                         self.fatigue.record_cookie("cf_clearance")
                     if self.settings.rate_limit.content_change_detection and self.brain:
-                        self.brain.check_content_changed(url, html)
+                        self.brain.content_detector.has_changed(url, html)
                     self._rate_state["last_request"] = tmod.time()
                     return html
                 self._rate_state["consecutive_blocks"] += 1
@@ -280,7 +285,6 @@ class HLTVClient:
                 else:
                     from src.exceptions import HTTPError
                     raise HTTPError(message=f"Stealth failed after {max_retries}: {e}", url=url) from e
-        from src.exceptions import BlockedError
         raise BlockedError(message=f"All {max_retries} attempts blocked: {url}", url=url)
 
     async def _get_light(self, url: str) -> str:
@@ -337,7 +341,6 @@ class HLTVClient:
                 logger.warning("Light error %s: %s", url, e)
                 if attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay * (2 ** attempt))
-        from src.exceptions import BlockedError
         raise BlockedError(message=f"Light: all {max_retries} attempts failed: {url}", url=url)
 
     async def _rate_limit_wait(self, url: str) -> None:
@@ -374,7 +377,7 @@ class HLTVClient:
             return headers
         profile = self._profiles.current
         versions = ["131.0.0.0", "133.0.0.0", "136.0.0.0"]
-        headers["User-Agent"] = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{versions[profile.fingerprint_seed % len(versions)]} Safari/537.36"
+        headers["User-Agent"] = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{versions[profile._fingerprint_seed % len(versions)]} Safari/537.36"
         return headers
 
     def get_stats(self) -> dict[str, Any]:
@@ -411,7 +414,11 @@ def _looks_blocked(html: str) -> bool:
     if not html or len(html) < 300:
         return True
     lower = html.lower()
-    return any(m in lower for m in ("just a moment", "checking your browser", "cf-browser-verification", "cf_challenge", "__cf_chl_f_tk", "challenge-platform", "turnstile", "captcha", "blocked")) and not any(m in lower for m in ("hltv", "nav-bar", "standard-box", "match-wrapper", "topnav", "sidebar"))
+    hltv_markers = ("hltv", "nav-bar", "standard-box", "match-wrapper", "teamsBox", "topnav", "sidebar", "footer-navigation")
+    block_markers = ("just a moment", "checking your browser", "cf-browser-verification", "cf_challenge", "__cf_chl_f_tk", "challenge-platform", "turnstile", "captcha", "blocked")
+    has_block = any(m in lower for m in block_markers)
+    has_content = any(m in lower for m in hltv_markers)
+    return has_block and not has_content
 
 
 def _is_detail_page(url: str) -> bool:

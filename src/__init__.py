@@ -1,5 +1,5 @@
 """
-HLTV Pro API v5.0 -- Single-IP Cloudflare bypass for HLTV.org.
+HLTV Pro API NG1.0 -- Single-IP Cloudflare bypass for HLTV.org.
 
 Async-first, anti-bot CS2 data API with:
 - SessionPool with TLS fingerprint rotation

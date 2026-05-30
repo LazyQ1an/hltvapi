@@ -1,7 +1,7 @@
 """
-TLS Session Ticket persistence for curl_cffi light mode. v8.0
+TLS Session Ticket persistence for curl_cffi light mode. NG1.0
 
-v9.0: PSK sync + CrossModeSessionBridge for stealth-light state transfer.
+NG1.0: PSK sync + CrossModeSessionBridge for stealth-light state transfer.
 
 Real browsers reuse TLS session tickets (RFC 5077) and TLS 1.3 PSK
 to skip full handshakes on subsequent connections. Without session
@@ -179,7 +179,7 @@ class TLSSessionManager:
                 logger.debug("TLS session load: %s", e)
 
 
-__all__ = ["TLSSessionManager"]
+__all__ = ["TLSSessionManager", "CrossModeSessionBridge"]
 
 
 # ---------------------------------------------------------------------------

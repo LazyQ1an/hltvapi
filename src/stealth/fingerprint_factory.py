@@ -1,5 +1,5 @@
 """
-Complete browser fingerprint factory for single-IP stealth. v7.0
+Complete browser fingerprint factory for single-IP stealth. NG1.0
 
 Generates realistic, hardware-level browser fingerprints that are:
 - Fixed per profile (deterministic from profile seed)

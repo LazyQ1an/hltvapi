@@ -1,7 +1,7 @@
 """
-Deep Nodriver browser management for single-IP Cloudflare bypass. v8.0
+Deep Nodriver browser management for single-IP Cloudflare bypass. NG1.0
 
-v8.0: Worker injection + micro-physics behavior + event chain completeness.
+NG1.0: Worker injection + micro-physics behavior + event chain completeness.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ logger = logging.getLogger("hltv.stealth.browser")
 
 
 class BrowserManager:
-    """Deep Nodriver customization for Cloudflare bypass v8.0."""
+    """Deep Nodriver customization for Cloudflare bypass NG1.0."""
 
     def __init__(
         self,
@@ -56,7 +56,7 @@ class BrowserManager:
         browser_args = self._build_chrome_args()
         chrome_path = self._resolve_chrome_path()
 
-        logger.info("Starting Nodriver v8.0 (headless=%s, profile=%s)", self._settings.headless, self._profile.name if self._profile else "default")
+        logger.info("Starting Nodriver NG1.0 (headless=%s, profile=%s)", self._settings.headless, self._profile.name if self._profile else "default")
 
         try:
             self._browser = await uc.start(headless=self._settings.headless, browser_args=browser_args, browser_executable_path=chrome_path)
@@ -69,7 +69,7 @@ class BrowserManager:
             from src.stealth.worker_injector import WorkerInjector
             self._worker_injector = WorkerInjector(self._browser)
 
-            logger.info("Nodriver v8.0 started")
+            logger.info("Nodriver NG1.0 started")
         except Exception as e:
             logger.error("Failed to start Nodriver: %s", e)
             raise
@@ -113,7 +113,7 @@ class BrowserManager:
             if self._cached_stealth_script:
                 await page.evaluate(self._cached_stealth_script)
 
-            # Inject into ALL worker contexts (v8.0)
+            # Inject into ALL worker contexts (NG1.0)
             if self._worker_injector:
                 await self._worker_injector.inject_all(self._cached_stealth_script or "")
 
@@ -203,10 +203,10 @@ class BrowserManager:
         plat = rng.choice(["Win32", "MacIntel", "Linux x86_64"])
         cs = rng.randint(1, 2**31 - 1)
         cn = round(rng.uniform(0.0005, 0.003), 6)
-        return f"""(function(){{"use strict";Object.defineProperties(navigator,{{webdriver:{{get:()=>undefined}},hardwareConcurrency:{{get:()=>{hw}}},deviceMemory:{{get:()=>{dm}}},platform:{{get:()=>'{plat}'}},vendor:{{get:()=>'Google Inc.'}},plugins:{{get:()=>[1,2,3,4,5]}},languages:{{get:()=>['en-US','en']}}}});const og=WebGLRenderingContext.prototype.getParameter;WebGLRenderingContext.prototype.getParameter=function(p){{if(p===37445)return'{gpu_v}';if(p===37446)return'{gpu_r}';return og.call(this,p)}};let rn={cs};HTMLCanvasElement.prototype.toDataURL=function(...a){{const c=this.getContext('2d');if(c&&this.width>0){{const im=c.getImageData(0,0,this.width,this.height);for(let i=0;i<im.data.length;i+=4){{rn=(rn*16807)%2147483647;const n=(rn/2147483647)*2-1;im.data[i]=Math.min(255,Math.max(0,im.data[i]+Math.round(n*{cn}*255)))}}c.putImageData(im,0,0)}}return origTDURL.apply(this,a)}};const origTDURL=HTMLCanvasElement.prototype.toDataURL;window.chrome={{runtime:{{}},loadTimes:()=>({{}}),csi:()=>({{}})}};}})();"""
+        return f"""(function(){{"use strict";Object.defineProperties(navigator,{{webdriver:{{get:()=>undefined}},hardwareConcurrency:{{get:()=>{hw}}},deviceMemory:{{get:()=>{dm}}},platform:{{get:()=>'{plat}'}},vendor:{{get:()=>'Google Inc.'}},plugins:{{get:()=>[1,2,3,4,5]}},languages:{{get:()=>['en-US','en']}}}});const og=WebGLRenderingContext.prototype.getParameter;WebGLRenderingContext.prototype.getParameter=function(p){{if(p===37445)return'{gpu_v}';if(p===37446)return'{gpu_r}';return og.call(this,p)}};let rn={cs};HTMLCanvasElement.prototype.toDataURL=function(...a){{const c=this.getContext('2d');if(c&&this.width>0){{const im=c.getImageData(0,0,this.width,this.height);for(let i=0;i<im.data.length;i+=4){{rn=(rn*16807)%2147483647;const n=(rn/2147483647)*2-1;im.data[i]=Math.min(255,Math.max(0,im.data[i]+Math.round(n*{cn}*255)))}}c.putImageData(im,0,0)}}return _origTDURL.apply(this,a)}};const _origTDURL=HTMLCanvasElement.prototype.toDataURL;window.chrome={{runtime:{{}},loadTimes:()=>({{}}),csi:()=>({{}})}};}})();"""
 
     def _build_chrome_args(self) -> list[str]:
-        args = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled", "--disable-automation", "--disable-features=TranslateUI,AudioServiceOutOfProcess,CalculateNativeWinOcclusion", "--disable-gpu", "--disable-software-rasterizer", "--disable-infobars", "--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "--disable-component-update", "--disable-default-apps", "--no-first-run", "--no-default-browser-check", "--disable-sync", "--disable-extensions", "--disable-breakpad", "--disable-crash-reporter", "--disable-hang-monitor", "--disable-prompt-on-repost", "--disable-client-side-phishing-detection", "--disable-popup-blocking", "--password-store=basic", "--use-mock-keychain", f"--window-size={self._settings.window_width},{self._settings.window_height}"]
+        args = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled", "--disable-automation", "--disable-features=TranslateUI,AudioServiceOutOfProcess,CalculateNativeWinOcclusion", "--use-gl=angle", "--use-angle=swiftshader", "--enable-webgl", "--disable-infobars", "--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "--disable-component-update", "--disable-default-apps", "--no-first-run", "--no-default-browser-check", "--disable-sync", "--disable-extensions", "--disable-breakpad", "--disable-crash-reporter", "--disable-hang-monitor", "--disable-prompt-on-repost", "--disable-client-side-phishing-detection", "--disable-popup-blocking", "--password-store=basic", "--use-mock-keychain", f"--window-size={self._settings.window_width},{self._settings.window_height}"]
         if self._profile:
             args.append(f"--user-data-dir={self._profile.user_data_dir}")
         args.extend(self._settings.extra_chrome_args)

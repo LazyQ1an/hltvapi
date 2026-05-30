@@ -1,6 +1,6 @@
 """
 Content-driven behavioural timing — replacing random delays with DOM-informed
-"reading time" estimates. v9.0
+"reading time" estimates. NG1.0
 
 Instead of blind random sleeps between requests, this module parses the
 returned HTML to estimate how long a human would actually spend reading
@@ -265,6 +265,7 @@ class ContentDrivenDelay:
         self._estimator = ReadingTimeEstimator()
         self._attention = AttentionModel()
         self._page_history: list[tuple[str, str, float]] = []  # (url, page_type, dwell)
+        self._last_metrics: ContentMetrics = ContentMetrics()
 
     async def sleep(self, html: str, *, page_type: str = "detail", url: str = "") -> float:
         """Sleep for a content-driven duration. Returns seconds slept."""
@@ -283,6 +284,7 @@ class ContentDrivenDelay:
             if len(self._page_history) > 100:
                 self._page_history = self._page_history[-50:]
 
+        self._last_metrics = metrics
         logger.debug("Content-driven sleep: %.1fs (words=%d tables=%d lists=%d density=%.2f type=%s)",
                      dwell, metrics.word_count, metrics.table_count,
                      metrics.list_item_count, metrics.density_score, page_type)
@@ -300,7 +302,7 @@ class ContentDrivenDelay:
 
     def get_metrics(self) -> ContentMetrics:
         """Return metrics for the most recently analyzed page."""
-        return ContentMetrics()
+        return self._last_metrics
 
 
 __all__ = [

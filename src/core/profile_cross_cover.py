@@ -1,6 +1,6 @@
 """
 Multi-profile cross-cover coordination — simulate a multi-device household
-behind a single IP to dilute scraping signal. v9.0
+behind a single IP to dilute scraping signal. NG1.0
 
 A single IP exposing one fingerprint profile doing heavy data extraction
 quickly burns its trust. But Cloudflare treats an IP with 3-5 distinct

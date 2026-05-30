@@ -1,7 +1,7 @@
 """
-Browser profile management for single-IP multi-identity operation. v7.0
+Browser profile management for single-IP multi-identity operation. NG1.0
 
-v7.0: Sleep-wake cycles + growth/aging
+NG1.0: Sleep-wake cycles + growth/aging
 - Profiles auto-sleep after prolonged inactivity
 - Sleeping profiles can be reactivated after cooldown
 - Profile growth: success rate, request count, cookie age influence
@@ -39,11 +39,12 @@ class Profile:
     _evolution_count: int = 0
     _last_evolution: float = 0.0
     _fingerprint_seed: int = 0
-    # v7.0
+    # NG1.0
     _asleep: bool = False
     _sleep_since: float = 0.0
     _wake_count: int = 0
     _growth_stage: int = 0  # 0=new, 1=established, 2=veteran
+    _session_request_count: int = 0  # NG1.0: requests in current session
 
     def __post_init__(self) -> None:
         if self._fingerprint_seed == 0:
@@ -160,6 +161,7 @@ class Profile:
     def record_success(self, response_time: float = 0.0) -> None:
         self.last_used = tmod.time()
         self.request_count += 1
+        self._session_request_count += 1
         self.success_count += 1
         if response_time > 0:
             self._response_times.append(response_time)
@@ -169,6 +171,7 @@ class Profile:
     def record_block(self) -> None:
         self.last_used = tmod.time()
         self.request_count += 1
+        self._session_request_count += 1
         self.block_count += 1
         self._challenge_times.append(tmod.time())
         if len(self._challenge_times) > 20:
@@ -180,7 +183,7 @@ class Profile:
 
 
 class ProfileManager:
-    """Smart profile lifecycle manager v7.0 with sleep-wake."""
+    """Smart profile lifecycle manager NG1.0 with sleep-wake."""
 
     def __init__(self, settings: ProfileSettings | None = None) -> None:
         self._settings = settings or ProfileSettings()
@@ -207,7 +210,7 @@ class ProfileManager:
             profile = Profile(name=name, user_data_dir=user_dir)
             profile.load_cookies()
             self._profiles.append(profile)
-        logger.info("ProfileManager v7.0: %d profiles in %s", len(self._profiles), str(base))
+        logger.info("ProfileManager NG1.0: %d profiles in %s", len(self._profiles), str(base))
 
     async def select(self) -> Profile:
         if not self._profiles:
@@ -230,6 +233,7 @@ class ProfileManager:
                 self._index = self._profiles.index(awake[i])
                 break
         profile = self._profiles[self._index]
+        profile._session_request_count = 0  # NG1.0: reset session counter on rotate
         if self._should_evolve(profile):
             profile.evolve(self._settings.evolution_degree)
         logger.debug("Selected %s (health=%.3f, stage=%d, asleep=%s)", profile.name, profile.health_score, profile._growth_stage, profile.is_asleep)
@@ -259,7 +263,7 @@ class ProfileManager:
         p = self.current
         if p.is_asleep:
             return True
-        if p.request_count >= self._settings.max_requests_per_profile:
+        if p._session_request_count >= self._settings.max_requests_per_profile:
             return True
         if p.age_hours > self._settings.max_lifetime_hours:
             return True
@@ -276,8 +280,9 @@ class ProfileManager:
             self.current.record_block()
 
     async def save_all_cookies(self, cookies: dict[str, str]) -> None:
-        for p in self._profiles:
-            p.save_cookies(cookies)
+        """Save cookies to the CURRENT profile only — maintains profile isolation."""
+        if self.current:
+            self.current.save_cookies(cookies)
 
     def best_profile(self) -> Profile | None:
         return max(self._profiles, key=lambda p: p.health_score) if self._profiles else None

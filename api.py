@@ -93,7 +93,7 @@ async def lifespan(app: FastAPI) -> Any:
 
 app = FastAPI(
     title="HLTV Pro API",
-    description="Professional CS2 data API for HLTV.org -- v5.0",
+    description="Professional CS2 data API for HLTV.org -- NG1.0",
     version="5.0.0",
     lifespan=lifespan,
 )

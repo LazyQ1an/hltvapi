@@ -1,5 +1,5 @@
 """
-Web Worker & multi-thread fingerprint injection via CDP. v8.0
+Web Worker & multi-thread fingerprint injection via CDP. NG1.0
 
 Cloudflare Turnstile probes environments in Web Workers, Service Workers,
 and Shared Workers. Most stealth frameworks only patch the main thread,
@@ -138,7 +138,7 @@ WORKER_FINGERPRINT_SCRIPT = """
         try { delete self[k]; } catch(e) {}
     });
 
-    // v9.0: Font metrics side-channel defense in Worker context
+    // NG1.0: Font metrics side-channel defense in Worker context
     // Cloudflare probes use OffscreenCanvas in Workers to measure font rendering.
     // OffscreenCanvas API is available in dedicated Workers (Chrome 69+).
     if (typeof OffscreenCanvas !== 'undefined') {
@@ -162,7 +162,7 @@ WORKER_FINGERPRINT_SCRIPT = """
         };
     }
 
-    // v9.0: Service Worker registration detection — prevent fingerprinting
+    // NG1.0: Service Worker registration detection — prevent fingerprinting
     // via ServiceWorkerContainer and registration scope analysis
     if (typeof ServiceWorkerContainer !== 'undefined') {
         const _origRegister = ServiceWorkerContainer.prototype.register;

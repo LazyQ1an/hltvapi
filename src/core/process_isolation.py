@@ -1,5 +1,5 @@
 """
-Process isolation and hot-swapping for long-running Linux server deployments. v9.0
+Process isolation and hot-swapping for long-running Linux server deployments. NG1.0
 
 Running Nodriver/Chromium continuously for weeks leaks kernel resources:
 - Orphaned shared memory segments in /dev/shm

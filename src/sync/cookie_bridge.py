@@ -1,5 +1,5 @@
 """
-Cross-mode cookie synchronization. v6.1
+Cross-mode cookie synchronization. NG1.0
 
 Enhanced with:
 - Real-time cookie freshness tracking

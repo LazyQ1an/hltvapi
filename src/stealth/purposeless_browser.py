@@ -1,6 +1,6 @@
 """
 Purposeless browsing injection — insert "idle human" behaviour between
-target data pages to wash the request stream. v9.0
+target data pages to wash the request stream. NG1.0
 
 Real HLTV users don't navigate player → player → player → player
 in rapid succession. They:

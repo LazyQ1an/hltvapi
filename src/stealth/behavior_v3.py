@@ -1,5 +1,5 @@
 """
-Human Behavior Engine v3 — micro-physics mouse + complete pointer event chains. v8.0
+Human Behavior Engine v3 — micro-physics mouse + complete pointer event chains. NG1.0
 
 Replaces Bezier curves with micro-tremor mouse movement based on
 real human motor physics. Implements complete browser event chains
